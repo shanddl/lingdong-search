@@ -60,13 +60,13 @@ jobs:
       - name: 构建 CRX 文件
         run: |
           echo "🚀 开始构建 CRX 文件..."
-          npm run build
-          
-          # 如果CRX构建失败，生成ZIP作为备用
-          if [ ! -f *.crx ]; then
-            echo "⚠️ CRX 构建失败，生成 ZIP 作为备用..."
-            npm run package || node scripts/package-extension.js
-          fi
+          npm run build || echo "⚠️ CRX 构建失败，将只提供 ZIP 版本"
+      
+      - name: 构建 ZIP 文件（始终生成）
+        run: |
+          echo "📦 开始构建 ZIP 文件..."
+          npm run package || node scripts/package-extension.js
+          echo "✅ ZIP 文件构建完成"
       
       - name: 列出构建产物
         run: |
