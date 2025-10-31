@@ -8,6 +8,8 @@ on:
       - 'js/**'
       - 'manifest.json'
       - 'package.json'
+  tags:
+    - 'v*'  # 推送以v开头的tag时触发
   workflow_dispatch: # 允许手动触发
 
 jobs:
@@ -57,19 +59,25 @@ jobs:
       - name: 检查是否应该创建 Release
         id: check_release
         run: |
-          # 如果推送了tag，或者手动触发，或者manifest.json有变化，则创建Release
+          # 如果推送了tag，或者手动触发，则创建Release
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_create=true" >> $GITHUB_OUTPUT
             echo "触发方式: 手动触发"
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "触发方式: Tag推送"
-          elif [[ "${{ github.event.head_commit.modified }}" == *manifest.json* ]] || [[ "${{ github.event.head_commit.added }}" == *manifest.json* ]]; then
-            echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "触发方式: manifest.json变更"
+            echo "触发方式: Tag推送 - ${{ github.ref }}"
+            # 从tag中提取版本号
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           else
-            echo "should_create=false" >> $GITHUB_OUTPUT
-            echo "跳过Release创建（无tag且manifest.json未变更）"
+            # 检查本次提交是否修改了manifest.json
+            if git diff --name-only HEAD~1 HEAD | grep -q "manifest.json"; then
+              echo "should_create=true" >> $GITHUB_OUTPUT
+              echo "触发方式: manifest.json版本变更"
+            else
+              echo "should_create=false" >> $GITHUB_OUTPUT
+              echo "跳过Release创建（仅代码更新，无版本变更）"
+            fi
           fi
       
       - name: 创建或更新 Release
@@ -79,7 +87,7 @@ jobs:
           files: |
             *.crx
             *.zip
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.check_release.outputs.tag_name || format('v{0}', steps.version.outputs.version) }}
           name: Release v${{ steps.version.outputs.version }}
           body: |
             ## 版本 v${{ steps.version.outputs.version }}
