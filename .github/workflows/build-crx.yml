@@ -89,7 +89,7 @@ jobs:
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
             ### 📦 下载
-            - [直接下载 ${{ steps.build.outputs.type | upper }}文件](./${{ steps.build.outputs.file }})
+            - [直接下载文件](./${{ steps.build.outputs.file }})
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
@@ -116,5 +116,5 @@ jobs:
           echo "- **Extension**: ${{ steps.manifest.outputs.name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.manifest.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **File**: ${{ steps.build.outputs.file }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Type**: ${{ steps.build.outputs.type | upper }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Type**: $(echo "${{ steps.build.outputs.type }}" | tr '[:lower:]' '[:upper:]')" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
