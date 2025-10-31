@@ -18,6 +18,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写入权限来创建Release
     
     steps:
       - name: 检出代码
@@ -48,6 +50,37 @@ jobs:
           else
             echo "✅ 找到私钥文件，构建 CRX"
             npm run build || node scripts/build-crx.js
+          fi
+      
+      - name: 列出构建产物
+        run: |
+          echo "📦 查找构建产物："
+          ls -la *.crx 2>/dev/null || echo "未找到 .crx 文件"
+          ls -la *.zip 2>/dev/null || echo "未找到 .zip 文件"
+          echo "当前目录文件："
+          ls -la | head -20
+      
+      - name: 准备Release文件
+        id: release_files
+        run: |
+          # 查找所有构建产物
+          CRX_FILES=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
+          ZIP_FILES=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
+          
+          if [ -n "$CRX_FILES" ]; then
+            echo "found_crx=$CRX_FILES" >> $GITHUB_OUTPUT
+            echo "✅ 找到CRX文件: $CRX_FILES"
+          else
+            echo "found_crx=" >> $GITHUB_OUTPUT
+            echo "⚠️ 未找到CRX文件"
+          fi
+          
+          if [ -n "$ZIP_FILES" ]; then
+            echo "found_zip=$ZIP_FILES" >> $GITHUB_OUTPUT
+            echo "✅ 找到ZIP文件: $ZIP_FILES"
+          else
+            echo "found_zip=" >> $GITHUB_OUTPUT
+            echo "⚠️ 未找到ZIP文件"
           fi
       
       - name: 上传构建产物
@@ -88,8 +121,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            *.crx
-            *.zip
+            ${{ steps.release_files.outputs.found_crx }}
+            ${{ steps.release_files.outputs.found_zip }}
           tag_name: ${{ steps.check_release.outputs.tag_name || format('v{0}', steps.version.outputs.version) }}
           name: Release v${{ steps.version.outputs.version }}
           body: |
@@ -112,5 +145,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: false  # 如果文件不存在也不失败
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
