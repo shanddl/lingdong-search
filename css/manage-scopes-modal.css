@@ -1,0 +1,365 @@
+/* 管理搜索范围模态窗口样式 */
+#manage-scopes-modal .modal-content {
+    background: var(--card-bg); /* 使用现有变量 */
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    max-width: 650px;
+    width: 90%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#manage-scopes-modal .modal-header {
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#manage-scopes-modal .modal-title {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+#manage-scopes-modal .modal-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 24px;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+#manage-scopes-modal .modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+/* 保存按钮样式 */
+#manage-scopes-modal .modal-save-btn {
+    background: var(--blue);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#manage-scopes-modal .modal-save-btn:hover {
+    background: #5a9cf0;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+}
+
+#manage-scopes-modal .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex-grow: 1;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(138, 180, 248, 0.5) rgba(255, 255, 255, 0.1);
+}
+
+/* 搜索范围模态框滚动条样式 */
+#manage-scopes-modal .modal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+#manage-scopes-modal .modal-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
+#manage-scopes-modal .modal-body::-webkit-scrollbar-thumb {
+    background: rgba(138, 180, 248, 0.5);
+    border-radius: 4px;
+}
+
+#manage-scopes-modal .modal-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(138, 180, 248, 0.8);
+}
+
+#manage-scopes-modal #manage-scopes-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#manage-scopes-modal .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#manage-scopes-modal .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+#manage-scopes-modal .tab-btn.active {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+#manage-scopes-modal #manage-scopes-list {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 8px;
+    margin-bottom: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* 列表项样式 */
+#manage-scopes-modal .list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    min-height: 60px;
+    transition: background-color 0.2s ease;
+}
+
+#manage-scopes-modal .list-item:last-child {
+    border-bottom: none;
+}
+
+#manage-scopes-modal .list-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+/* 拖拽状态样式 */
+#manage-scopes-modal .list-item.dragging {
+    opacity: 0.5;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+#manage-scopes-modal .list-item.drag-over-top {
+    border-top: 2px solid var(--blue);
+}
+
+#manage-scopes-modal .list-item.drag-over-bottom {
+    border-bottom: 2px solid var(--blue);
+}
+
+#manage-scopes-modal .list-item-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+#manage-scopes-modal .icon-placeholder {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+#manage-scopes-modal .icon-placeholder img {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+}
+
+#manage-scopes-modal .list-item-info p {
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#manage-scopes-modal .list-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+/* 排序按钮容器 */
+#manage-scopes-modal .sort-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#manage-scopes-modal .sort-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+#manage-scopes-modal .sort-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+#manage-scopes-modal .sort-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+#manage-scopes-modal .sort-btn:disabled:hover {
+    background: none;
+    color: var(--text-secondary);
+}
+
+/* 编辑和删除按钮 */
+#manage-scopes-modal .footer-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+#manage-scopes-modal .footer-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+#manage-scopes-modal .footer-btn[data-action="delete-scope"] {
+    color: var(--red);
+}
+
+#manage-scopes-modal .footer-btn[data-action="delete-scope"]:hover {
+    background: rgba(242, 139, 130, 0.15);
+    color: var(--red);
+}
+
+/* 底部按钮 */
+#manage-scopes-modal .modal-footer {
+    padding: 20px 24px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-start;
+}
+
+#manage-scopes-modal #add-new-scope-btn {
+    background: var(--blue); /* 使用现有变量 */
+    color: var(--bg);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+#manage-scopes-modal #add-new-scope-btn:hover {
+    background: #5a9cf0;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+}
+
+#manage-scopes-modal #add-new-scope-btn:active {
+    transform: translateY(0);
+}
+
+/* 滚动条样式 */
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar:vertical {
+    width: 6px;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-track:vertical {
+    background: transparent;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-thumb:vertical {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-thumb:vertical:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar:horizontal {
+    height: 6px;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-track:horizontal {
+    background: transparent;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-thumb:horizontal {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+#manage-scopes-modal #manage-scopes-list::-webkit-scrollbar-thumb:horizontal:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    #manage-scopes-modal .modal-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+    
+    #manage-scopes-modal .modal-header {
+        padding: 16px 20px;
+    }
+    
+    #manage-scopes-modal .modal-body {
+        padding: 16px 20px;
+    }
+    
+    #manage-scopes-modal .list-item {
+        padding: 12px 10px;
+    }
+    
+    #manage-scopes-modal .modal-footer {
+        padding: 16px 20px;
+    }
+}

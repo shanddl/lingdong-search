@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵动搜索</title>
+    <link rel="icon" type="image/png" href="icons/icon48.png">
+    <link rel="alternate icon" href="icons/icon48.png">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 壁纸立即加载脚本 - 必须在head中，消除白屏 -->
+    <script src="js/instantWallpaper.js"></script>
+    <!-- 页面加载动画脚本 - 必须在head中，确保在DOM渲染前执行 -->
+    <script src="js/pageLoadAnimation.js"></script>
+</head>
+<body id="body">
+
+    <!-- 壁纸库入口按钮 - 左下角钻石图标 -->
+    <button class="wallpaper-library-btn" title="壁纸库">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <!-- 钻石顶部 -->
+            <path d="M6 9 L12 3 L18 9"/>
+            <!-- 钻石腰部 -->
+            <path d="M3 9 L6 9 L12 3 L18 9 L21 9"/>
+            <!-- 钻石切面线 -->
+            <path d="M3 9 L12 21 L21 9"/>
+            <!-- 中间切面 -->
+            <path d="M6 9 L12 21"/>
+            <path d="M18 9 L12 21"/>
+            <!-- 顶部切面 -->
+            <path d="M9 6 L12 3 L15 6"/>
+        </svg>
+    </button>
+
+    <main id="main">
+        <div id="active-scope-pills-container"></div>
+
+        <div class="header-container" id="header-container">
+            <div id="search-form-wrapper">
+                <div class="header-content">
+                    <div class="header-group-left">
+                        <div class="engine-btn-container">
+                            <button id="engine-btn" class="header-btn" aria-haspopup="true" aria-expanded="false" title="切换搜索引擎" data-action="toggle-engine-menu">
+                                <span id="active-engine-name"></span>
+                            </button>
+                             <div id="search-engine-menu" class="dropdown-menu">
+                                <div id="engine-tab-buttons-container"></div>
+                                <div id="engine-menu-content-container"></div>
+                                <div class="engine-menu-controls">
+                                    <div class="control-group">
+                                        <label for="engine-size-slider">引擎大小: <span id="engine-size-value">16px</span></label>
+                                        <input type="range" class="adjustable-slider" id="engine-size-slider" min="12" max="24" value="16">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="engine-spacing-slider">间距: <span id="engine-spacing-value">8px</span></label>
+                                        <input type="range" class="adjustable-slider" id="engine-spacing-slider" min="4" max="20" value="8">
+                                    </div>
+                                </div>
+                                <div class="menu-footer justify-between">
+                                    <div class="footer-group">
+                                        <button class="footer-btn" data-action="manage-engines">管理引擎...</button>
+                                        <button class="footer-btn" data-action="open-settings">设置...</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="search-container">
+                        <form id="search-form" role="search" onsubmit="return false;">
+                            <button type="button" id="search-scope-btn" class="header-btn" aria-haspopup="true" aria-expanded="false" title="选择搜索范围 (Tab)" aria-label="选择搜索范围" data-action="toggle-scope-menu">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3,8H21V6H3V8M7,13H17V11H7V13M11,18H13V16H11V18Z" /></svg>
+                            </button>
+                            <div id="search-input-container">
+                               <input id="real-search-input" placeholder=" " autocomplete="off">
+                            </div>
+                            <button type="submit" id="search-submit-btn" class="header-btn" aria-label="搜索">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path></svg>
+                            </button>
+                        </form>
+                        <div id="search-clock"></div>
+                    </div>
+                </div>
+                
+                <!-- AI搜索容器 - 作为search-form-wrapper的直接子元素 -->
+                <div id="ai-search-container" class="ai-search-container">
+                    <div class="ai-search-header">
+                        <div class="ai-search-title">AI 搜索</div>
+                        <button class="ai-settings-gear" data-action="open-ai-settings" title="AI设置">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                                <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="ai-favorites-bar" class="ai-favorites-bar">
+                        <!-- AI收藏将由JavaScript动态渲染 -->
+                    </div>
+                    <div class="ai-options">
+                        <!-- AI选项将由JavaScript动态渲染 -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="search-scope-menu" class="dropdown-menu">
+                <div class="menu-header" id="favorites-bar">
+                    <span id="favorites-placeholder">⭐ 收藏夹 (可拖拽添加)</span>
+                </div>
+                <div class="menu-footer justify-between">
+                    <div id="custom-filters-container" class="footer-group"></div>
+                    <div class="footer-group">
+                        <button id="clear-pills-btn" class="footer-btn" title="清除所有范围">清除范围</button>
+                        <button id="manage-scopes-btn" class="footer-btn" data-action="manage-scopes">管理</button>
+                    </div>
+                </div>
+                <div id="tab-buttons-container"></div>
+                <div id="scope-menu-content-container"></div>
+            </div>
+            
+            <div id="search-suggestions-container" class="dropdown-menu">
+                <div id="suggestion-tabs">
+                    <div class="suggestion-tab-group">
+                        <button class="suggestion-tab" data-type="suggestion">搜索建议</button>
+                        <button class="suggestion-tab" data-type="history">历史记录</button>
+                        <button class="suggestion-tab" data-type="bookmarks">书签</button>
+                    </div>
+                    <button id="clear-history-btn" class="hidden">清空</button>
+                </div>
+                <div id="suggestion-content"></div>
+            </div>
+        </div>
+
+        <section id="navigation-container">
+            <div id="navigation-grid"></div>
+        </section>
+
+    </main>
+
+    <!-- Dock栏 - 固定在浏览器底部 -->
+    <div id="navigation-tabs-container">
+        <div id="navigation-tabs"></div>
+    </div>
+    
+    <!-- All Modals Below -->
+    <div id="manage-time-filters-modal" class="modal-overlay">
+         <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header"><h3 class="modal-title">管理时间规则</h3><button class="modal-close-btn" data-action="close-modal">&times;</button></div>
+            <div class="modal-body">
+                <div id="manage-time-filters-list"></div>
+                <div class="form-container">
+                    <h4 id="time-rule-editor-title" style="margin-bottom: 16px; font-weight: 500;">添加新规则</h4>
+                    <form id="add-time-filter-form">
+                        <input type="hidden" id="time-rule-id">
+                        <div class="form-group"><label for="time-rule-name">显示名称</label><input type="text" id="time-rule-name" placeholder="例如: 上周报告, 2023年Q1" required></div>
+                        <div class="form-group"><label for="time-rule-type">规则类型</label><div class="custom-select-wrapper"><button type="button" id="time-rule-type" data-value="relative"></button></div></div>
+                        <div id="time-rule-relative-panel"><div class="form-group"><label for="time-rule-relative-value">代码</label><input type="text" id="time-rule-relative-value" placeholder="d7 (7天), w1 (1周), m3 (3月), y1 (1年)"><p class="help-text">d=天, w=周, m=月, y=年</p></div></div>
+                        <div id="time-rule-single-panel" class="hidden"><div class="form-grid"><div class="form-group"><label for="time-rule-single-condition">条件</label><div class="custom-select-wrapper"><button type="button" id="time-rule-single-condition" data-value="after"></button></div></div><div class="form-group"><label for="time-rule-single-date">日期</label><input type="date" id="time-rule-single-date"></div></div></div>
+                        <div id="time-rule-range-panel" class="hidden"><div class="form-grid"><div class="form-group"><label for="time-rule-range-start">开始日期</label><input type="date" id="time-rule-range-start"></div><div class="form-group"><label for="time-rule-range-end">结束日期</label><input type="date" id="time-rule-range-end"></div></div></div>
+                    </form>
+                </div>
+            </div>
+            <div class="modal-footer justify-end"><button id="cancel-time-rule-edit-btn" class="modal-btn modal-btn-secondary hidden">取消编辑</button><button type="submit" form="add-time-filter-form" class="modal-btn modal-btn-primary">保存规则</button></div>
+        </div>
+    </div>
+    <div id="manage-file-filters-modal" class="modal-overlay">
+         <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header"><h3 class="modal-title">管理文件类型选项</h3><button class="modal-close-btn" data-action="close-modal">&times;</button></div>
+            <div class="modal-body">
+                <div id="manage-file-filters-list"></div>
+                 <form id="add-file-filter-form" class="form-grid" style="margin-top:16px; border-top: 1px solid var(--border-color); padding-top: 20px;"><input type="text" id="add-file-filter-text" placeholder="显示文本 (如: 电子表格)" required><input type="text" id="add-file-filter-value" placeholder="文件后缀 (如: xlsx)" required><button type="submit" class="modal-btn modal-btn-primary">添加</button></form>
+            </div>
+            <div class="modal-footer justify-end"><button class="modal-btn modal-btn-secondary" data-action="close-modal">完成</button></div>
+        </div>
+    </div>
+
+    <!-- Context menus (required for right-click actions) -->
+    <div id="nav-context-menu" class="dropdown-menu"></div>
+    <div id="nav-tab-context-menu" class="dropdown-menu"></div>
+    <div id="main-context-menu" class="dropdown-menu"></div>
+
+    <!-- 效果调节器面板遮罩 -->
+    <div class="effects-panel-overlay" id="effectsPanelOverlay"></div>
+
+    <!-- 统一设置侧边面板 - Tab分类 -->
+    <div class="effects-settings-panel" id="effectsSettingsPanel" style="display: none !important;">
+        <!-- 拖动手柄 -->
+        <div class="effects-panel-resize-handle" id="effectsPanelResizeHandle"></div>
+        
+        <!-- Tab栏 -->
+        <div class="effects-panel-tabs">
+            <button class="effects-tab active" data-tab="appearance">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                </svg>
+                <span>外观</span>
+            </button>
+            <button class="effects-tab" data-tab="search">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+                </svg>
+                <span>搜索</span>
+            </button>
+            <button class="effects-tab" data-tab="navigation">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16,11V3H8V9H2V21H22V11H16M10,5H14V19H10V5M4,11H8V19H4V11M20,19H16V13H20V19Z"/>
+                </svg>
+                <span>导航</span>
+            </button>
+            <button class="effects-tab" data-tab="system">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10M10,22C9.75,22 9.54,21.82 9.5,21.58L9.13,18.93C8.5,18.68 7.96,18.34 7.44,17.94L4.95,18.95C4.73,19.03 4.46,18.95 4.34,18.73L2.34,15.27C2.21,15.05 2.27,14.78 2.46,14.63L4.57,12.97L4.5,12L4.57,11.03L2.46,9.37C2.27,9.22 2.21,8.95 2.34,8.73L4.34,5.27C4.46,5.05 4.73,4.96 4.95,5.05L7.44,6.05C7.96,5.66 8.5,5.32 9.13,5.07L9.5,2.42C9.54,2.18 9.75,2 10,2H14C14.25,2 14.46,2.18 14.5,2.42L14.87,5.07C15.5,5.32 16.04,5.66 16.56,6.05L19.05,5.05C19.27,4.96 19.54,5.05 19.66,5.27L21.66,8.73C21.79,8.95 21.73,9.22 21.54,9.37L19.43,11.03L19.5,12L19.43,12.97L21.54,14.63C21.73,14.78 21.79,15.05 21.66,15.27L19.66,18.73C19.54,18.95 19.27,19.04 19.05,18.95L16.56,17.95C16.04,18.35 15.5,18.69 14.87,18.94L14.5,21.58C14.46,21.82 14.25,22 14,22H10M11.25,4L10.88,6.61C9.68,6.86 8.62,7.5 7.85,8.39L5.44,7.35L4.69,8.65L6.8,10.2C6.4,11.37 6.4,12.64 6.8,13.8L4.68,15.36L5.43,16.66L7.86,15.62C8.63,16.5 9.68,17.14 10.87,17.38L11.24,20H12.76L13.13,17.39C14.32,17.14 15.37,16.5 16.14,15.62L18.57,16.66L19.32,15.36L17.2,13.81C17.6,12.64 17.6,11.37 17.2,10.2L19.31,8.65L18.56,7.35L16.15,8.39C15.38,7.5 14.32,6.86 13.12,6.62L12.75,4H11.25Z"/>
+                </svg>
+                <span>系统</span>
+            </button>
+        </div>
+
+        <!-- Tab内容容器 -->
+        <div class="effects-tabs-container">
+            <!-- 外观Tab内容 -->
+            <div class="effects-tab-content active" data-tab-content="appearance">
+                <div class="effects-accordion-menu">
+            <!-- 快速操作 -->
+            <div class="effects-accordion-item" data-accordion="quick-actions">
+                <div class="effects-accordion-header">
+                    <div class="effects-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                        </svg>
+                    </div>
+                    <div class="effects-menu-content">
+                        <div class="effects-menu-label">快速操作</div>
+                        <div class="effects-menu-description">图标对齐和形状</div>
+                    </div>
+                    <div class="effects-menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="effects-accordion-content">
+                    <div class="effects-accordion-body">
+                        <div class="effects-quick-actions">
+                <div class="effects-action-group">
+                    <div class="effects-action-label">↔️ 图标对齐</div>
+                    <div class="effects-btn-group effects-btn-group-compact">
+                        <button class="effects-btn effects-btn-sm" data-action="set-nav-alignment" data-align="left">左</button>
+                        <button class="effects-btn effects-btn-sm active" data-action="set-nav-alignment" data-align="center">中</button>
+                        <button class="effects-btn effects-btn-sm" data-action="set-nav-alignment" data-align="right">右</button>
+                    </div>
+                </div>
+
+                        <div class="effects-action-group">
+                            <div class="effects-action-label">🔲 图标形状</div>
+                            <div class="effects-btn-group effects-btn-group-compact">
+                                <button class="effects-btn effects-btn-sm active" data-action="set-nav-shape" data-shape="square">方形</button>
+                                <button class="effects-btn effects-btn-sm" data-action="set-nav-shape" data-shape="h-capsule">胶囊</button>
+                            </div>
+                        </div>
+
+                        <div class="effects-action-group">
+                            <div class="effects-action-label">🌙 面板模式</div>
+                            <div class="effects-btn-group effects-btn-group-compact">
+                                <button class="effects-btn effects-btn-sm active" data-action="set-panel-theme" data-theme="light">日间</button>
+                                <button class="effects-btn effects-btn-sm" data-action="set-panel-theme" data-theme="dark">夜间</button>
+                            </div>
+                        </div>
+
+                        <div class="effects-action-group">
+                            <div class="effects-action-label">📍 面板位置</div>
+                            <div class="effects-btn-group effects-btn-group-compact">
+                                <button class="effects-btn effects-btn-sm" data-action="set-panel-position" data-position="left">左侧</button>
+                                <button class="effects-btn effects-btn-sm active" data-action="set-panel-position" data-position="right">右侧</button>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 壁纸背景适配 -->
+            <div class="effects-accordion-item" data-accordion="wallpaper">
+                <div class="effects-accordion-header">
+                    <div class="effects-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8.5,13.5L11,16.5L14.5,12L19,18H5M21,19V5C21,3.89 20.1,3 19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19Z"/>
+                        </svg>
+                    </div>
+                    <div class="effects-menu-content">
+                        <div class="effects-menu-label">壁纸背景适配</div>
+                        <div class="effects-menu-description">调整背景遮罩和模糊效果</div>
+                    </div>
+                    <div class="effects-menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="effects-accordion-content">
+                    <div class="effects-accordion-body">
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>全局暗色遮罩</span>
+                        <span class="effects-control-value" id="effects-val-overlay">30%</span>
+                    </div>
+                    <input type="range" id="overlay-opacity-slider" min="0" max="70" value="30" step="5">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>搜索框背景不透明度</span>
+                        <span class="effects-control-value" id="effects-val-search-bg">15%</span>
+                    </div>
+                    <input type="range" id="search-bg-opacity-slider" min="0" max="50" value="15" step="5">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>搜索框模糊度</span>
+                        <span class="effects-control-value" id="effects-val-search-blur">30px</span>
+                    </div>
+                    <input type="range" id="search-blur-slider" min="0" max="60" value="30" step="5">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>搜索框边框不透明度</span>
+                        <span class="effects-control-value" id="effects-val-search-border">35%</span>
+                    </div>
+                    <input type="range" id="search-border-opacity-slider" min="10" max="60" value="35" step="5">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>图标背景不透明度</span>
+                        <span class="effects-control-value" id="effects-val-icon-bg">13%</span>
+                    </div>
+                    <input type="range" id="icon-bg-opacity-slider" min="0" max="95" value="13" step="5">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>图标模糊度</span>
+                        <span class="effects-control-value" id="effects-val-icon-blur">15px</span>
+                    </div>
+                    <input type="range" id="icon-blur-slider" min="0" max="40" value="15" step="5">
+                </div>
+
+                        <div class="effects-control-group">
+                            <div class="effects-control-label">
+                                <span>文字阴影强度</span>
+                                <span class="effects-control-value" id="effects-val-text-shadow">80%</span>
+                            </div>
+                            <input type="range" id="text-shadow-opacity-slider" min="0" max="100" value="80" step="10">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 搜索框 -->
+            <div class="effects-accordion-item" data-accordion="search">
+                <div class="effects-accordion-header">
+                    <div class="effects-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+                        </svg>
+                    </div>
+                    <div class="effects-menu-content">
+                        <div class="effects-menu-label">搜索框</div>
+                        <div class="effects-menu-description">位置和尺寸调整</div>
+                    </div>
+                    <div class="effects-menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="effects-accordion-content">
+                    <div class="effects-accordion-body">
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>垂直位置</span>
+                        <span class="effects-control-value" id="effects-val-pos">15%</span>
+                    </div>
+                    <input type="range" id="position-slider" min="1" max="50" value="15">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>搜索框宽度</span>
+                        <span class="effects-control-value" id="effects-val-width">700px</span>
+                    </div>
+                    <input type="range" id="width-slider" min="400" max="2000" value="700">
+                </div>
+
+                        <div class="effects-control-group">
+                            <div class="effects-control-label">
+                                <span>范围菜单宽度</span>
+                                <span class="effects-control-value" id="effects-val-scope">450px</span>
+                            </div>
+                            <input type="range" id="scope-width-slider" min="300" max="800" value="450">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图标 -->
+            <div class="effects-accordion-item" data-accordion="icons">
+                <div class="effects-accordion-header">
+                    <div class="effects-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16,11V3H8V9H2V21H22V11H16M10,5H14V19H10V5M4,11H8V19H4V11M20,19H16V13H20V19Z"/>
+                        </svg>
+                    </div>
+                    <div class="effects-menu-content">
+                        <div class="effects-menu-label">图标</div>
+                        <div class="effects-menu-description">图标大小、间距和密度</div>
+                    </div>
+                    <div class="effects-menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="effects-accordion-content">
+                    <div class="effects-accordion-body">
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>图标大小</span>
+                        <span class="effects-control-value" id="effects-val-size">80px</span>
+                    </div>
+                    <input type="range" id="nav-item-size-slider" min="50" max="120" value="80">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>图标间距</span>
+                        <span class="effects-control-value" id="effects-val-gap">24px</span>
+                    </div>
+                    <input type="range" id="nav-grid-gap-slider" min="8" max="50" value="24">
+                </div>
+
+                <div class="effects-control-group">
+                    <div class="effects-control-label">
+                        <span>图标密度</span>
+                        <span class="effects-control-value" id="effects-val-min">120px</span>
+                    </div>
+                    <input type="range" id="nav-min-width-slider" min="80" max="300" value="120">
+                </div>
+
+                        <div class="effects-control-group">
+                            <div class="effects-control-label">
+                                <span>Dock栏缩放</span>
+                                <span class="effects-control-value" id="effects-val-dock">1.0x</span>
+                            </div>
+                            <input type="range" id="dock-scale-slider" min="0.7" max="1.5" step="0.01" value="1.0">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                </div>
+            </div>
+
+            <!-- 搜索Tab内容 -->
+            <div class="effects-tab-content" data-tab-content="search">
+                <div class="effects-accordion-menu">
+                    <!-- AI管理 -->
+                    <div class="effects-accordion-item" data-accordion="ai-management">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">AI管理</div>
+                                <div class="effects-menu-description">添加和管理AI服务</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <!-- AI列表 -->
+                                <div id="ai-list"></div>
+                                
+                                <!-- AI表单 -->
+                                <div class="form-container" style="margin-top: 16px;">
+                                    <h4 id="ai-form-title" style="margin-bottom: 12px; font-weight: 500; font-size: 13px; color: rgba(255,255,255,0.85);">添加新AI</h4>
+                                    <form id="ai-form">
+                                        <input type="hidden" id="ai-edit-id">
+                                        
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="ai-name">AI名称</label>
+                                                <input type="text" id="ai-name" placeholder="例如: ChatGPT" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ai-description">描述</label>
+                                                <input type="text" id="ai-description" placeholder="例如: OpenAI对话助手" required>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="ai-website-url">网站地址</label>
+                                            <input type="url" id="ai-website-url" placeholder="https://chat.openai.com" required>
+                                            <p class="help-text">点击收藏栏时打开的网址</p>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="ai-search-url">搜索网址</label>
+                                            <div class="input-wrapper">
+                                                <input type="url" id="ai-search-url" placeholder="https://chat.openai.com/?q={query}" required>
+                                                <button type="button" id="test-icon-sources-btn" class="input-action-btn" data-action="test-icon-sources">获取图标源</button>
+                                            </div>
+                                            <p class="help-text">搜索时使用的网址，用 {query} 作为查询占位符</p>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="ai-icon-url">图标地址 (可选)</label>
+                                            <input type="url" id="ai-icon-url" placeholder="https://...">
+                                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                                                <img id="ai-icon-preview" src="https://placehold.co/24x24/3c4043/e8eaed?text=?" style="width: 24px; height: 24px; border-radius: 4px;">
+                                                <span style="font-size: 12px; color: var(--text-secondary);">预览</span>
+                                            </div>
+                                            <!-- 图标源列表容器 -->
+                                            <div id="icon-sources-list" style="display: none; margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                                                <h5 style="margin: 0 0 8px 0; font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500;">可用图标源</h5>
+                                                <div id="icon-sources-content" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label>显示位置</label>
+                                            <div class="settings-btn-group">
+                                                <button type="button" id="ai-show-in-search-btn" class="modal-btn modal-btn-secondary selected">搜索列表</button>
+                                                <button type="button" id="ai-show-in-favorites-btn" class="modal-btn modal-btn-secondary selected">收藏栏</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                                            <button type="button" id="ai-form-cancel" class="modal-btn modal-btn-secondary hidden">取消编辑</button>
+                                            <button type="submit" class="modal-btn modal-btn-primary">保存AI</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 引擎管理 -->
+                    <div class="effects-accordion-item" data-accordion="engine-management">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">引擎管理</div>
+                                <div class="effects-menu-description">添加和排序搜索引擎</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <!-- 引擎列表 -->
+                                <div id="engine-list"></div>
+                                
+                                <!-- 引擎表单 -->
+                                <div class="form-container" style="margin-top: 16px;">
+                                    <h4 id="engine-form-title" style="margin-bottom: 12px; font-weight: 500; font-size: 13px; color: rgba(255,255,255,0.85);">添加新引擎</h4>
+                                    <form id="manage-engines-form">
+                                        <input type="hidden" id="engine-edit-id">
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="engine-name">引擎名称</label>
+                                                <input type="text" id="engine-name" placeholder="例如: DuckDuckGo" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="engine-tab">分类</label>
+                                                <input type="text" id="engine-tab" placeholder="例如: 通用" required>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="engine-url">搜索网址</label>
+                                            <input type="text" id="engine-url" placeholder="https://www.google.com/search?q={query}" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="engine-icon-url">图标地址 (可选)</label>
+                                            <div class="input-wrapper">
+                                                <input type="text" id="engine-icon-url" placeholder="https://icon.bqb.cool/?url=...">
+                                                <button type="button" id="fetch-engine-icon-btn" class="input-action-btn" data-action="test-engine-icon-sources">获取图标源</button>
+                                            </div>
+                                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                                                <img id="engine-icon-preview" src="https://placehold.co/24x24/3c4043/e8eaed?text=?" style="width: 24px; height: 24px; border-radius: 4px;">
+                                                <span style="font-size: 12px; color: var(--text-secondary);">预览</span>
+                                            </div>
+                                            <!-- 图标源列表容器 -->
+                                            <div id="engine-icon-sources-list" style="display: none; margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                                                <h5 style="margin: 0 0 8px 0; font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500;">可用图标源</h5>
+                                                <div id="engine-icon-sources-content" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                                            <button type="button" id="engine-form-cancel" class="modal-btn modal-btn-secondary hidden">取消编辑</button>
+                                            <button type="submit" class="modal-btn modal-btn-primary">保存引擎</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 范围管理 -->
+                    <div class="effects-accordion-item" data-accordion="scope-management">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">范围管理</div>
+                                <div class="effects-menu-description">创建和编辑搜索范围</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <!-- 列表视图和编辑器 -->
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    <!-- 顶部按钮 -->
+                                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                        <button class="modal-btn modal-btn-secondary" data-action="add-new-scope" style="font-size: 12px; padding: 6px 12px;">
+                                            <span>+ 新增</span>
+                                        </button>
+                                        <button class="modal-btn modal-btn-primary" data-action="save-scope" style="font-size: 12px; padding: 6px 12px;">保存</button>
+                                    </div>
+                                    
+                                    <!-- 范围列表 -->
+                                    <div id="scopes-list-view">
+                                        <div id="manage-scopes-tabs" class="tab-buttons-container"></div>
+                                        <div id="manage-scopes-list"></div>
+                                    </div>
+                                    
+                                    <!-- 范围编辑器 -->
+                                    <div id="scope-editor-view" class="hidden">
+                                        <form id="scope-editor-form" style="padding: 8px 0;">
+                                            <input type="hidden" id="scope-editor-id">
+                                            
+                                            <!-- 基本信息组 -->
+                                            <div class="settings-form-group">
+                                                <h4 class="form-divider">基本信息</h4>
+                                                <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-title">名称</label>
+                                                        <input type="text" id="scope-editor-title" required>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-icon">图标地址 (Emoji 或 URL)</label>
+                                                        <div class="input-wrapper">
+                                                            <input type="text" id="scope-editor-icon">
+                                                            <button type="button" id="fetch-scope-icon-btn" class="input-action-btn" data-action="test-scope-icon-sources">获取图标</button>
+                                                        </div>
+                                                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                                                            <img id="scope-icon-preview" src="https://placehold.co/24x24/3c4043/e8eaed?text=?" style="width: 24px; height: 24px; border-radius: 4px;">
+                                                            <span style="font-size: 12px; color: var(--text-secondary);">预览</span>
+                                                        </div>
+                                                        <!-- 图标源列表容器 -->
+                                                        <div id="scope-icon-sources-list" style="display: none; margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                                                            <h5 style="margin: 0 0 8px 0; font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500;">可用图标源</h5>
+                                                            <div id="scope-icon-sources-content" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="scope-editor-tab-select">所属标签页</label>
+                                                    <div class="custom-select-wrapper">
+                                                        <button type="button" id="scope-editor-tab-select" data-value=""></button>
+                                                    </div>
+                                                    <input type="text" id="scope-editor-tab-new" class="hidden" style="margin-top: 8px;" placeholder="输入新标签页名称">
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 核心规则组 -->
+                                            <div class="settings-form-group">
+                                                <h4 class="form-divider">核心规则</h4>
+                                                <div class="form-group">
+                                                    <label for="scope-editor-sites">限定网站 (每行一个)</label>
+                                                    <textarea id="scope-editor-sites" rows="3" placeholder="example.com&#10;anothersite.org"></textarea>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="scope-editor-excludeKeywords">排除关键词 (用空格分开)</label>
+                                                    <input type="text" id="scope-editor-excludeKeywords" placeholder="词语A 词语B">
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 预设过滤器组 -->
+                                            <div class="settings-form-group">
+                                                <h4 class="form-divider">预设过滤器</h4>
+                                                <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-filetype">文件类型</label>
+                                                        <div class="custom-select-wrapper">
+                                                            <button type="button" id="scope-editor-filetype" data-value=""></button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-timeRange">时间范围</label>
+                                                        <div class="custom-select-wrapper">
+                                                            <button type="button" id="scope-editor-timeRange" data-value=""></button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-after">之后日期 (优先于时间范围)</label>
+                                                        <input type="date" id="scope-editor-after">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-before">之前日期 (优先于时间范围)</label>
+                                                        <input type="date" id="scope-editor-before">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 高级指令组 -->
+                                            <div class="settings-form-group">
+                                                <h4 class="form-divider">高级指令</h4>
+                                                <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-intitle">标题必须包含</label>
+                                                        <input type="text" id="scope-editor-intitle">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="scope-editor-intext">正文必须包含</label>
+                                                        <input type="text" id="scope-editor-intext">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 导航Tab内容 -->
+            <div class="effects-tab-content" data-tab-content="navigation">
+                <div class="effects-accordion-menu">
+                    <!-- 导航组管理 -->
+                    <div class="effects-accordion-item" data-accordion="nav-group-management">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M16,20H20V16H16M16,14H20V10H16M10,8H14V4H10M16,8H20V4H16M10,14H14V10H10M4,14H8V10H4M4,20H8V16H4M10,20H14V16H10M4,8H8V4H4V8Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">分类管理</div>
+                                <div class="effects-menu-description">添加和编辑导航分类</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <!-- 导航组列表 -->
+                                <div id="nav-groups-list" style="margin-bottom: 16px;">
+                                    <!-- Group list items will be rendered here by JS -->
+                                </div>
+                                
+                                <!-- 导航组表单 -->
+                                <div class="form-container">
+                                    <h4 id="nav-group-form-title" style="margin-bottom: 12px; font-weight: 500; font-size: 13px; color: rgba(255,255,255,0.85);">添加新分类</h4>
+                                    <form id="add-nav-group-form">
+                                        <div class="input-wrapper" style="display: flex; gap: 8px;">
+                                            <input type="hidden" id="nav-group-edit-id">
+                                            <input type="text" id="nav-group-name-input" placeholder="输入分类名称" required style="flex: 1;">
+                                            <button type="submit" class="modal-btn modal-btn-primary" style="font-size: 12px; padding: 6px 16px;">保存</button>
+                                            <button type="button" id="cancel-nav-group-edit-btn" class="modal-btn modal-btn-secondary hidden" style="font-size: 12px; padding: 6px 16px;">取消</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统Tab内容 -->
+            <div class="effects-tab-content" data-tab-content="system">
+                <div class="effects-accordion-menu">
+                    <!-- 面板设置 -->
+                    <div class="effects-accordion-item" data-accordion="panel-settings">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">面板设置</div>
+                                <div class="effects-menu-description">主题和位置</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <div class="effects-system-section">
+                                    <h4 style="margin: 0 0 12px 0; font-size: 13px; color: rgba(255,255,255,0.85); font-weight: 500;">面板主题</h4>
+                                    <div class="effects-btn-group" style="margin-bottom: 20px;">
+                                        <button class="effects-btn" data-action="set-panel-theme" data-theme="light">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/>
+                                            </svg>
+                                            亮色
+                                        </button>
+                                        <button class="effects-btn" data-action="set-panel-theme" data-theme="dark">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z"/>
+                                            </svg>
+                                            暗色
+                                        </button>
+                                    </div>
+                                    
+                                    <h4 style="margin: 0 0 12px 0; font-size: 13px; color: rgba(255,255,255,0.85); font-weight: 500;">面板位置</h4>
+                                    <div class="effects-btn-group">
+                                        <button class="effects-btn" data-action="set-panel-position" data-position="left">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M9,3H3V21H9V3M19,3H13V9H19V3M19,11H13V21H19V11Z"/>
+                                            </svg>
+                                            左侧
+                                        </button>
+                                        <button class="effects-btn active" data-action="set-panel-position" data-position="right">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M15,3H21V21H15V3M11,3H5V9H11V3M11,11H5V21H11V11Z"/>
+                                            </svg>
+                                            右侧
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 数据管理 -->
+                    <div class="effects-accordion-item" data-accordion="data-management">
+                        <div class="effects-accordion-header">
+                            <div class="effects-menu-icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12,3C7.58,3 4,4.79 4,7C4,9.21 7.58,11 12,11C16.42,11 20,9.21 20,7C20,4.79 16.42,3 12,3M4,9V12C4,14.21 7.58,16 12,16C16.42,16 20,14.21 20,12V9C20,11.21 16.42,13 12,13C7.58,13 4,11.21 4,9M4,14V17C4,19.21 7.58,21 12,21C16.42,21 20,19.21 20,17V14C20,16.21 16.42,18 12,18C7.58,18 4,16.21 4,14Z"/>
+                                </svg>
+                            </div>
+                            <div class="effects-menu-content">
+                                <div class="effects-menu-label">数据管理</div>
+                                <div class="effects-menu-description">导入、导出和同步设置</div>
+                            </div>
+                            <div class="effects-menu-arrow">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="effects-accordion-content">
+                            <div class="effects-accordion-body">
+                                <div class="effects-system-section">
+                                    <p class="effects-system-hint">手动同步会将当前所有设置保存到浏览器账户（如果已登录），否则保存到本地。导入操作将会覆盖现有设置。</p>
+                                    <div class="effects-btn-group" style="flex-direction: column; gap: 8px;">
+                                        <button class="effects-btn" data-action="sync-settings">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
+                                            </svg>
+                                            手动同步
+                                        </button>
+                                        <button class="effects-btn" data-action="import-settings">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>
+                                            </svg>
+                                            导入数据
+                                        </button>
+                                        <button class="effects-btn" data-action="export-settings">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
+                                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,11L16,15H13.5V18H10.5V15H8L12,11Z"/>
+                                            </svg>
+                                            导出数据
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

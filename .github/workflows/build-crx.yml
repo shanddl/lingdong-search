@@ -1,0 +1,169 @@
+name: Build and Release CRX
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.1)'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Get version from manifest
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extension version: $VERSION"
+
+      - name: Generate private key if not exists
+        id: generate_key
+        run: |
+          if [ -n "${{ secrets.CRX_PRIVATE_KEY }}" ]; then
+            echo "${{ secrets.CRX_PRIVATE_KEY }}" > private-key.pem
+            echo "key_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ 使用 GitHub Secrets 中的私钥"
+          else
+            openssl genrsa -out private-key.pem 2048
+            echo "key_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ 警告: 使用临时生成的私钥，请保存此密钥用于后续签名"
+            PRIVATE_KEY=$(cat private-key.pem | base64 -w 0)
+            echo ""
+            echo "=========================================="
+            echo "请将此私钥添加到 GitHub Secrets (CRX_PRIVATE_KEY):"
+            echo "=========================================="
+            echo "$PRIVATE_KEY"
+            echo "=========================================="
+            echo ""
+          fi
+          chmod 600 private-key.pem
+
+      - name: Install CRX package
+        run: |
+          npm install crx@5.0.1 --save-dev
+          
+      - name: Build CRX file
+        run: |
+          EXTENSION_NAME="lingdong-search"
+          VERSION="${{ steps.get_version.outputs.version }}"
+          OUTPUT_FILE="${EXTENSION_NAME}-v${VERSION}.crx"
+          
+          # 使用 crx 包打包
+          node -e "
+            const crx = require('crx');
+            const fs = require('fs');
+            
+            (async () => {
+              try {
+                const privateKey = fs.readFileSync('private-key.pem');
+                const crxPackage = new crx({
+                  privateKey: privateKey,
+                  codebase: 'https://github.com/${{ github.repository }}',
+                  rootDirectory: process.cwd()
+                });
+                
+                const crxBuffer = await crxPackage.pack();
+                fs.writeFileSync('${OUTPUT_FILE}', crxBuffer);
+                const stats = fs.statSync('${OUTPUT_FILE}');
+                console.log('✅ CRX 文件构建成功: ${OUTPUT_FILE}');
+                console.log('📦 文件大小: ' + (stats.size / 1024 / 1024).toFixed(2) + ' MB');
+              } catch (error) {
+                console.error('❌ 构建失败:', error);
+                console.error('错误详情:', error.stack);
+                process.exit(1);
+              }
+            })();
+          "
+          
+          # 备用方法：如果上面的方法失败，尝试使用命令行
+          if [ ! -f "$OUTPUT_FILE" ]; then
+            echo "尝试备用打包方法..."
+            npx crx pack . -o "$OUTPUT_FILE" -p private-key.pem || \
+            node scripts/package-extension.js "${OUTPUT_FILE%.crx}.zip" "private-key.pem"
+          fi
+          
+          echo "OUTPUT_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+          if [ -f "$OUTPUT_FILE" ]; then
+            ls -lh "$OUTPUT_FILE"
+          else
+            echo "⚠️ 警告: CRX 文件未生成，但 ZIP 文件可能已创建"
+            ls -lh *.zip *.crx 2>/dev/null || true
+          fi
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            *.crx
+          name: Release v${{ steps.get_version.outputs.version }}
+          tag_name: v${{ steps.get_version.outputs.version }}
+          body: |
+            ## 版本 v${{ steps.get_version.outputs.version }}
+            
+            ### 下载
+            点击下方的 Assets 下载 `.crx` 文件
+            
+            ### 安装说明
+            1. 下载 `.crx` 文件
+            2. 打开 Chrome 浏览器，进入 `chrome://extensions/`
+            3. 启用"开发者模式"
+            4. 将 `.crx` 文件拖拽到页面中完成安装
+            
+            ### 变更内容
+            - 自动构建于 ${{ github.sha }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crx-package
+          path: |
+            *.crx
+            *.zip
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Output download info
+        run: |
+          CRX_FILE=$(ls *.crx | head -n 1)
+          echo "## 📦 CRX 文件构建完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "文件名: \`$CRX_FILE\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "下载链接: https://github.com/${{ github.repository }}/releases/latest" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ 此构建不会创建 Release，请创建 Tag 或手动触发 Release 以生成下载链接" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "创建 Tag 命令:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "git tag v${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "git push origin v${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+

@@ -1,0 +1,24 @@
+{
+  "name": "lingdong-search-extension",
+  "version": "1.0.0",
+  "description": "灵动搜索 - 自定义新标签页扩展",
+  "scripts": {
+    "build": "node scripts/build-crx.js",
+    "package": "node scripts/package-extension.js"
+  },
+  "devDependencies": {
+    "crx": "^5.0.1",
+    "archiver": "^7.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "chrome-extension",
+    "new-tab"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

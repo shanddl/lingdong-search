@@ -1,0 +1,34 @@
+# 敏感文件
+*.pem
+*.key
+*.p12
+private-key.pem
+key.pem
+
+# 构建产物
+*.crx
+*.zip
+dist/
+build/
+*.crx.pem
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+npm-debug.log*
+
+# 临时文件
+tmp/
+temp/
+

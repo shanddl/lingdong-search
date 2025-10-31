@@ -1,0 +1,158 @@
+:root {
+    --blue: #8ab4f8;
+    --green: #81c995;
+    --red: #f28b82;
+    --bg: #17181a;
+    --card-bg: #202124;
+    --text-primary: #e8eaed;
+    --text-secondary: #bdc1c6;
+    --border-color: #3c4043;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    width: 320px; /* 固定宽度以保证UI稳定 */
+    font-size: 14px;
+}
+
+.container {
+    padding: 16px;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.form-group input[type="text"],
+.form-group select {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.form-group input[type="text"]:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.3);
+}
+
+.form-group select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23bdc1c6' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+    padding-right: 32px;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+    background: var(--blue);
+    color: var(--bg);
+    margin-top: 8px;
+}
+
+.submit-btn:hover {
+    filter: brightness(1.1);
+}
+
+.submit-btn:disabled {
+    background: var(--border-color);
+    cursor: not-allowed;
+    filter: none;
+}
+
+.status-message {
+    margin-top: 12px;
+    font-size: 13px;
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    display: none; /* Initially hidden */
+}
+
+.status-message.success {
+    background-color: rgba(129, 201, 149, 0.2);
+    color: var(--green);
+    display: block;
+}
+
+.status-message.error {
+    background-color: rgba(242, 139, 130, 0.2);
+    color: var(--red);
+    display: block;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#new-group-container {
+    margin-top: 12px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+}
+
+/* Fix: ensure native dropdown menu uses dark theme in the popup */
+.form-group select {
+    /* make the closed select look like other inputs */
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+}
+
+/* Try to force options in the opened dropdown to a dark background
+   Note: some browsers/platforms may ignore option styling, but Chromium-based
+   popups generally honor these in-extension styles. */
+.form-group select option {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+}
+
+/* Remove any unexpected white fill for the dropdown arrow on some platforms */
+select::-ms-expand { display: none; }
+
+/* Accessibility: keep focus outline consistent */
+.form-group select:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.3);
+}

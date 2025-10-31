@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "灵动搜索",
+  "version": "1.0",
+  "description": "一个功能强大的自定义新标签页。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "contextMenus",
+    "bookmarks"
+  ],
+  "host_permissions": [
+    "http://wallpaper.apc.360.cn/*",
+    "https://api.zzzmh.cn/*",
+    "https://bing.ioliu.cn/*",
+    "https://cn.bing.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'self' http://wallpaper.apc.360.cn https://api.zzzmh.cn https://bing.ioliu.cn https://cn.bing.com http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "wallpaper.html"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
