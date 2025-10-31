@@ -57,8 +57,8 @@ jobs:
           
           echo "📋 Checking for build artifacts..."
           
-          # 查找统一命名的文件
-          BASE_NAME="${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}"
+          # 查找统一命名的文件（文件名前缀固定为 lingdong-search）
+          BASE_NAME="lingdong-search-v${{ steps.manifest.outputs.version }}"
           ZIP_FILE="${BASE_NAME}.zip"
           CRX_FILE="${BASE_NAME}.crx"
           
