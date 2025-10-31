@@ -87,7 +87,8 @@ jobs:
         with:
           name: extension-${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}
           path: |
-            ${{ steps.build.outputs.file }}
+            ${{ steps.build.outputs.zip_file }}
+            ${{ steps.build.outputs.crx_file }}
             *.zip
             *.crx
           retention-days: 90
