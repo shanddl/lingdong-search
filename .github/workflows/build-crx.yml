@@ -41,15 +41,31 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "扩展版本: $VERSION"
       
-      - name: 构建 CRX（使用 ZIP 作为备用方案）
+      - name: 生成私钥（如果不存在）
         run: |
-          # 如果没有私钥，使用 zip 打包方式
           if [ ! -f "private-key.pem" ]; then
-            echo "⚠️ 未找到私钥文件，使用 ZIP 打包方式"
-            npm run package || node scripts/package-extension.js
+            echo "🔑 生成私钥文件..."
+            node -e "
+              const NodeRSA = require('node-rsa');
+              const fs = require('fs');
+              const key = new NodeRSA({ b: 2048 });
+              const privateKey = key.exportKey('pkcs1-private-pem');
+              fs.writeFileSync('private-key.pem', privateKey);
+              console.log('✅ 私钥生成成功');
+            "
           else
-            echo "✅ 找到私钥文件，构建 CRX"
-            npm run build || node scripts/build-crx.js
+            echo "✅ 私钥文件已存在"
+          fi
+      
+      - name: 构建 CRX 文件
+        run: |
+          echo "🚀 开始构建 CRX 文件..."
+          npm run build
+          
+          # 如果CRX构建失败，生成ZIP作为备用
+          if [ ! -f *.crx ]; then
+            echo "⚠️ CRX 构建失败，生成 ZIP 作为备用..."
+            npm run package || node scripts/package-extension.js
           fi
       
       - name: 列出构建产物
