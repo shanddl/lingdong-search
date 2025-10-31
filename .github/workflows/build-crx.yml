@@ -143,8 +143,12 @@ jobs:
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
             ### 📦 下载
-            - [下载 ZIP 文件](./${{ steps.build.outputs.zip_file }})
-            - [下载 CRX 文件](./${{ steps.build.outputs.crx_file }})
+            - [📦 下载 ZIP 文件](./${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.zip)
+            - [📦 下载 CRX 文件](./${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.crx)
+            
+            **文件名格式：**
+            - ZIP: `${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.zip`
+            - CRX: `${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.crx`
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
