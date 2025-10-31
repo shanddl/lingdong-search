@@ -96,31 +96,43 @@ jobs:
           echo "当前目录文件："
           ls -la | head -20
       
-      - name: 准备Release文件
+      - name: 准备Release文件列表
         id: release_files
         run: |
-          # 优先使用固定名称的文件（如果存在），否则使用带版本号的文件
+          # 收集所有存在的文件
+          FILES_TO_UPLOAD=""
+          
+          # 检查固定名称的CRX文件
           if [ -f "lingdong-search.crx" ]; then
-            CRX_FILE="lingdong-search.crx"
-          else
-            CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
+            FILES_TO_UPLOAD="$FILES_TO_UPLOAD lingdong-search.crx"
+            echo "✅ 找到: lingdong-search.crx"
           fi
           
+          # 检查固定名称的ZIP文件
           if [ -f "lingdong-search.zip" ]; then
-            ZIP_FILE="lingdong-search.zip"
-          else
-            ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
+            FILES_TO_UPLOAD="$FILES_TO_UPLOAD lingdong-search.zip"
+            echo "✅ 找到: lingdong-search.zip"
           fi
           
-          # 收集所有需要上传的文件（固定名称 + 带版本号的）
-          ALL_CRX=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | tr '\n' ' ')
-          ALL_ZIP=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | tr '\n' ' ')
+          # 检查带版本号的文件（排除固定名称的，避免重复）
+          for crx in *.crx; do
+            if [ -f "$crx" ] && [ "$crx" != "lingdong-search.crx" ]; then
+              FILES_TO_UPLOAD="$FILES_TO_UPLOAD $crx"
+              echo "✅ 找到: $crx"
+            fi
+          done
           
-          echo "found_crx=$ALL_CRX" >> $GITHUB_OUTPUT
-          echo "found_zip=$ALL_ZIP" >> $GITHUB_OUTPUT
+          for zip in *.zip; do
+            if [ -f "$zip" ] && [ "$zip" != "lingdong-search.zip" ]; then
+              FILES_TO_UPLOAD="$FILES_TO_UPLOAD $zip"
+              echo "✅ 找到: $zip"
+            fi
+          done
           
-          echo "✅ CRX文件: $ALL_CRX"
-          echo "✅ ZIP文件: $ALL_ZIP"
+          # 移除前导空格并输出
+          FILES_TO_UPLOAD=$(echo "$FILES_TO_UPLOAD" | sed 's/^ *//')
+          echo "files=$FILES_TO_UPLOAD" >> $GITHUB_OUTPUT
+          echo "📦 将上传的文件: $FILES_TO_UPLOAD"
       
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -156,14 +168,10 @@ jobs:
           fi
       
       - name: 创建或更新 Release
-        if: steps.check_release.outputs.should_create == 'true'
+        if: steps.check_release.outputs.should_create == 'true' && steps.release_files.outputs.files != ''
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            lingdong-search.crx
-            lingdong-search.zip
-            *.crx
-            *.zip
+          files: ${{ steps.release_files.outputs.files }}
           tag_name: ${{ steps.check_release.outputs.tag_name || format('v{0}', steps.version.outputs.version) }}
           name: Release v${{ steps.version.outputs.version }}
           body: |
