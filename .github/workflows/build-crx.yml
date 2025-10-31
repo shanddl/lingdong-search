@@ -40,17 +40,6 @@ jobs:
           echo "📦 Extension: $NAME"
           echo "📝 Version: $VERSION"
 
-      - name: Generate private key if not exists
-        id: keygen
-        run: |
-          if [ ! -f private-key.pem ]; then
-            echo "🔑 Generating private key..."
-            openssl genrsa -out private-key.pem 2048
-            echo "key_created=true" >> $GITHUB_OUTPUT
-          else
-            echo "key_created=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build extension package
         id: build
         run: |
@@ -129,6 +118,3 @@ jobs:
           echo "- **File**: ${{ steps.build.outputs.file }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Type**: ${{ steps.build.outputs.type | upper }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.keygen.outputs.key_created }}" == "true" ]; then
-            echo "- **Note**: Private key was auto-generated for this build" >> $GITHUB_STEP_SUMMARY
-          fi

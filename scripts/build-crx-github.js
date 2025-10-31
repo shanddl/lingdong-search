@@ -103,25 +103,15 @@ async function buildCRX() {
   console.log(`📝 扩展名: ${manifest.name}`);
   console.log(`📝 版本: ${version}`);
   console.log(`📁 输出文件: ${outputFile}`);
-  console.log(`🔑 私钥路径: ${privateKeyPath}`);
   
-  // 确保私钥存在
-  if (!fs.existsSync(privateKeyPath)) {
-    throw new Error(`私钥文件不存在: ${privateKeyPath}`);
-  }
-
-  // 尝试方法1: 直接使用ZIP打包（最可靠）
-  // 在GitHub Actions中，ZIP文件也可以作为Chrome扩展安装
+  // 直接使用ZIP打包（最可靠）
+  // ZIP文件可以作为Chrome扩展安装（开发者模式下）
   console.log('📦 使用ZIP打包方式（兼容Chrome扩展安装）...');
   const zipFile = outputFile.replace('.crx', '.zip');
-  try {
-    await createZip(zipFile);
-    console.log(`✅ ZIP文件创建成功，可以作为扩展包使用`);
-    return zipFile;
-  } catch (error) {
-    console.error(`❌ ZIP打包失败: ${error.message}`);
-    throw error;
-  }
+  
+  await createZip(zipFile);
+  console.log(`✅ ZIP文件创建成功，可以作为扩展包使用`);
+  return zipFile;
 }
 
 // 执行构建
