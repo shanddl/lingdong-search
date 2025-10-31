@@ -117,15 +117,17 @@ jobs:
       - name: Check if CRX file exists
         id: check_crx
         run: |
-          if [ -f *.crx ]; then
+          if ls *.crx 1> /dev/null 2>&1; then
             CRX_FILE=$(ls *.crx | head -n 1)
             echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "✅ CRX 文件存在: $CRX_FILE"
+            ls -lh "$CRX_FILE"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "⚠️ 警告: 未找到 CRX 文件"
-            ls -la *.crx *.zip 2>/dev/null || true
+            echo "当前目录文件列表："
+            ls -la *.crx *.zip 2>/dev/null || ls -la | head -20
           fi
 
       - name: Create Release
@@ -137,7 +139,6 @@ jobs:
           name: Release v${{ steps.get_version.outputs.version }}
           tag_name: v${{ steps.get_version.outputs.version }}
           generate_release_notes: true
-          make_latest: true
           fail_on_unmatched_files: false
           body: |
             ## 版本 v${{ steps.get_version.outputs.version }}
