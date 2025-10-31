@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "灵动搜索",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "一个功能强大的自定义新标签页。",
   "icons": {
     "16": "icons/icon16.png",
