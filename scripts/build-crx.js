@@ -14,12 +14,30 @@ const extensionName = manifest.name.replace(/\s+/g, '-').toLowerCase();
 const outputFile = path.join(__dirname, '..', `${extensionName}-v${version}.crx`);
 const privateKeyPath = path.join(__dirname, '..', 'private-key.pem');
 
-// 检查私钥是否存在
+// 检查私钥是否存在，如果不存在则生成
 if (!fs.existsSync(privateKeyPath)) {
-  console.error('❌ 错误: 未找到私钥文件 private-key.pem');
-  console.log('💡 提示: 运行以下命令生成私钥:');
-  console.log('   openssl genrsa -out private-key.pem 2048');
-  process.exit(1);
+  console.log('⚠️ 未找到私钥文件，尝试自动生成...');
+  try {
+    // 尝试使用 node-rsa 生成私钥
+    const NodeRSA = require('node-rsa');
+    const key = new NodeRSA({ b: 2048 });
+    const privateKey = key.exportKey('pkcs1-private-pem');
+    fs.writeFileSync(privateKeyPath, privateKey);
+    console.log('✅ 已自动生成私钥文件');
+  } catch (error) {
+    console.log('⚠️ 无法自动生成私钥，使用 ZIP 打包方式');
+    // 调用备用打包脚本
+    const { packageExtension } = require('./package-extension.js');
+    const zipOutput = outputFile.replace('.crx', '.zip');
+    packageExtension(zipOutput, null).then(() => {
+      console.log('✅ 已生成 ZIP 文件（可用作扩展包）');
+      process.exit(0);
+    }).catch(err => {
+      console.error('❌ 打包失败:', err);
+      process.exit(1);
+    });
+    return;
+  }
 }
 
 try {
