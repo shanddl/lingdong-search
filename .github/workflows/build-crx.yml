@@ -68,6 +68,26 @@ jobs:
           npm run package || node scripts/package-extension.js
           echo "✅ ZIP 文件构建完成"
       
+      - name: 创建固定名称的下载文件
+        run: |
+          # 查找并复制CRX文件为固定名称
+          CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
+          if [ -n "$CRX_FILE" ]; then
+            cp "$CRX_FILE" "lingdong-search.crx"
+            echo "✅ 已创建固定名称: lingdong-search.crx (来源: $CRX_FILE)"
+          else
+            echo "⚠️ 未找到CRX文件，跳过"
+          fi
+          
+          # 查找并复制ZIP文件为固定名称
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            cp "$ZIP_FILE" "lingdong-search.zip"
+            echo "✅ 已创建固定名称: lingdong-search.zip (来源: $ZIP_FILE)"
+          else
+            echo "⚠️ 未找到ZIP文件，跳过"
+          fi
+      
       - name: 列出构建产物
         run: |
           echo "📦 查找构建产物："
@@ -79,25 +99,28 @@ jobs:
       - name: 准备Release文件
         id: release_files
         run: |
-          # 查找所有构建产物
-          CRX_FILES=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
-          ZIP_FILES=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
-          
-          if [ -n "$CRX_FILES" ]; then
-            echo "found_crx=$CRX_FILES" >> $GITHUB_OUTPUT
-            echo "✅ 找到CRX文件: $CRX_FILES"
+          # 优先使用固定名称的文件（如果存在），否则使用带版本号的文件
+          if [ -f "lingdong-search.crx" ]; then
+            CRX_FILE="lingdong-search.crx"
           else
-            echo "found_crx=" >> $GITHUB_OUTPUT
-            echo "⚠️ 未找到CRX文件"
+            CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
           fi
           
-          if [ -n "$ZIP_FILES" ]; then
-            echo "found_zip=$ZIP_FILES" >> $GITHUB_OUTPUT
-            echo "✅ 找到ZIP文件: $ZIP_FILES"
+          if [ -f "lingdong-search.zip" ]; then
+            ZIP_FILE="lingdong-search.zip"
           else
-            echo "found_zip=" >> $GITHUB_OUTPUT
-            echo "⚠️ 未找到ZIP文件"
+            ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
           fi
+          
+          # 收集所有需要上传的文件（固定名称 + 带版本号的）
+          ALL_CRX=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | tr '\n' ' ')
+          ALL_ZIP=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | tr '\n' ' ')
+          
+          echo "found_crx=$ALL_CRX" >> $GITHUB_OUTPUT
+          echo "found_zip=$ALL_ZIP" >> $GITHUB_OUTPUT
+          
+          echo "✅ CRX文件: $ALL_CRX"
+          echo "✅ ZIP文件: $ALL_ZIP"
       
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -137,8 +160,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ steps.release_files.outputs.found_crx }}
-            ${{ steps.release_files.outputs.found_zip }}
+            lingdong-search.crx
+            lingdong-search.zip
+            *.crx
+            *.zip
           tag_name: ${{ steps.check_release.outputs.tag_name || format('v{0}', steps.version.outputs.version) }}
           name: Release v${{ steps.version.outputs.version }}
           body: |
