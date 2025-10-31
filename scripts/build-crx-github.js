@@ -197,12 +197,17 @@ async function buildExtension() {
     throw new Error('ZIP文件创建失败');
   }
   
-  // 2. 尝试创建 CRX 文件
+  // 2. 必须创建 CRX 文件（尝试多种方法）
+  console.log('📦 创建 CRX 文件（必须生成）...');
   const crxResult = await buildCRX(crxFile, privateKeyPath);
   if (crxResult && fs.existsSync(crxFile)) {
     files.push(crxFile);
+    console.log(`✅ CRX文件创建成功: ${crxFile}`);
   } else {
-    console.log('⚠️ CRX文件生成失败，仅提供ZIP文件');
+    // CRX生成失败，但仍然继续（至少要有ZIP）
+    console.error('❌ CRX文件生成失败！');
+    console.error('⚠️ 警告：Release中将只有ZIP文件');
+    // 不抛出错误，至少保证ZIP可用
   }
   
   console.log(`✨ 构建完成，共生成 ${files.length} 个文件`);
