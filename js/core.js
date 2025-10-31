@@ -432,7 +432,8 @@ export const core = {
         const engine = state.userData.searchEngines.find(e => e.id === state.userData.activeSearchEngineId);
 
         const sitePills = state.activeSearchPills.filter(p => p.type === 'site');
-        const otherPills = state.activeSearchPills.filter(p => p.type !== 'site');
+        const scopePills = state.activeSearchPills.filter(p => p.type === 'scope');
+        const otherPills = state.activeSearchPills.filter(p => p.type !== 'site' && p.type !== 'scope');
         const otherPillsQuery = otherPills.map(p => p.queryPart).join(' ');
 
         let siteQuery = '';
@@ -443,7 +444,15 @@ export const core = {
             }
         }
 
-        const finalQuery = `${query} ${otherPillsQuery} ${siteQuery}`.trim().replace(/\s+/g, ' ');
+        let scopeQuery = '';
+        if (scopePills.length > 0) {
+            scopeQuery = scopePills.map(p => p.queryPart).join(' OR ');
+            if (scopePills.length > 1) {
+                scopeQuery = `(${scopeQuery})`;
+            }
+        }
+
+        const finalQuery = `${query} ${otherPillsQuery} ${siteQuery} ${scopeQuery}`.trim().replace(/\s+/g, ' ');
         if (engine) window.open(engine.url.replace(/\{query\}/gi, encodeURIComponent(finalQuery)), '_blank');
         if (dom.realSearchInput) dom.realSearchInput.blur();
         utils.closeAllDropdowns();
