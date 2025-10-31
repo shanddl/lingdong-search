@@ -102,16 +102,34 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         id: release_files
         run: |
+          BASE_NAME="${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}"
+          ZIP_FILE="${BASE_NAME}.zip"
+          CRX_FILE="${BASE_NAME}.crx"
+          
+          echo "🔍 Checking files for release..."
+          echo "ZIP_FILE: $ZIP_FILE"
+          echo "CRX_FILE: $CRX_FILE"
+          
           RELEASE_FILES=""
-          if [ -f "${{ steps.build.outputs.zip_file }}" ]; then
-            RELEASE_FILES="$RELEASE_FILES${{ steps.build.outputs.zip_file }}\n"
+          
+          if [ -f "$ZIP_FILE" ]; then
+            echo "✅ ZIP file exists: $ZIP_FILE"
+            RELEASE_FILES="$RELEASE_FILES$ZIP_FILE\n"
+          else
+            echo "❌ ZIP file not found: $ZIP_FILE"
           fi
-          if [ -f "${{ steps.build.outputs.crx_file }}" ]; then
-            RELEASE_FILES="$RELEASE_FILES${{ steps.build.outputs.crx_file }}\n"
+          
+          if [ -f "$CRX_FILE" ]; then
+            echo "✅ CRX file exists: $CRX_FILE"
+            RELEASE_FILES="$RELEASE_FILES$CRX_FILE\n"
+          else
+            echo "⚠️ CRX file not found: $CRX_FILE"
           fi
+          
           echo "files<<EOF" >> $GITHUB_OUTPUT
           echo -e "$RELEASE_FILES" | grep -v '^$' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          
           echo "📦 Release files prepared:"
           echo -e "$RELEASE_FILES"
 
@@ -119,9 +137,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ${{ steps.build.outputs.zip_file }}
-            ${{ steps.build.outputs.crx_file }}
+          files: ${{ steps.release_files.outputs.files }}
+          fail_on_unmatched_files: false
           body: |
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
