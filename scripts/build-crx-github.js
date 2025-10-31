@@ -138,8 +138,11 @@ async function createZip(outputFile) {
 }
 
 async function buildCRX(crxOutputFile, privateKeyPath) {
-  console.log('📦 尝试使用 crx3 打包 CRX 文件...');
+  console.log('📦 尝试使用多种方法打包 CRX 文件...');
+  
+  // 尝试方法1: crx3
   try {
+    console.log('🔄 尝试方法1: 使用 crx3...');
     execSync(`npx -y crx3@1.1.15 . -p "${privateKeyPath}" -o "${crxOutputFile}"`, {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..'),
@@ -149,16 +152,36 @@ async function buildCRX(crxOutputFile, privateKeyPath) {
     
     if (fs.existsSync(crxOutputFile)) {
       const stats = fs.statSync(crxOutputFile);
-      console.log(`✅ CRX 文件构建成功！`);
+      console.log(`✅ CRX 文件构建成功（使用 crx3）！`);
       console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
       return crxOutputFile;
-    } else {
-      throw new Error('CRX文件未生成');
     }
   } catch (error) {
     console.log(`⚠️ crx3 构建失败: ${error.message}`);
-    return null;
   }
+  
+  // 尝试方法2: crx (旧版本)
+  try {
+    console.log('🔄 尝试方法2: 使用 crx...');
+    execSync(`npx -y crx@5.0.1 pack . -o "${crxOutputFile}" -p "${privateKeyPath}"`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: { ...process.env, NODE_ENV: 'production' },
+      maxBuffer: 10 * 1024 * 1024
+    });
+    
+    if (fs.existsSync(crxOutputFile)) {
+      const stats = fs.statSync(crxOutputFile);
+      console.log(`✅ CRX 文件构建成功（使用 crx）！`);
+      console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+      return crxOutputFile;
+    }
+  } catch (error) {
+    console.log(`⚠️ crx 构建失败: ${error.message}`);
+  }
+  
+  console.error('❌ 所有CRX构建方法都失败了');
+  return null;
 }
 
 async function buildExtension() {
