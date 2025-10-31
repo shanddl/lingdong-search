@@ -11,7 +11,8 @@ const archiver = require('archiver');
 const manifestPath = path.join(__dirname, '..', 'manifest.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const version = manifest.version || '1.0.0';
-const extensionName = manifest.name.replace(/\s+/g, '-').toLowerCase();
+// 统一使用固定的文件名前缀，确保规范且链接不会失效
+const extensionName = 'lingdong-search';
 
 const outputFile = path.join(__dirname, '..', `${extensionName}-v${version}.crx`);
 const privateKeyPath = path.join(__dirname, '..', 'private-key.pem');

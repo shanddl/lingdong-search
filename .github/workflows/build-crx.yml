@@ -39,7 +39,8 @@ jobs:
         id: manifest
         run: |
           VERSION=$(node -p "require('./manifest.json').version")
-          NAME=$(node -p "require('./manifest.json').name.replace(/\s+/g, '-').toLowerCase()")
+          # 统一使用固定的文件名前缀，确保规范且链接不会失效
+          NAME="lingdong-search"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "📦 Extension: $NAME"
@@ -143,12 +144,12 @@ jobs:
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
             ### 📦 下载
-            - [📦 下载 ZIP 文件](./${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.zip)
-            - [📦 下载 CRX 文件](./${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.crx)
+            - [📦 下载 ZIP 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.zip)
+            - [📦 下载 CRX 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.crx)
             
-            **文件名格式：**
-            - ZIP: `${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.zip`
-            - CRX: `${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}.crx`
+            **文件名格式（统一前缀）：**
+            - ZIP: `lingdong-search-v${{ steps.manifest.outputs.version }}.zip`
+            - CRX: `lingdong-search-v${{ steps.manifest.outputs.version }}.crx`
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
