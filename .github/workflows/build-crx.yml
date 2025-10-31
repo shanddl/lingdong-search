@@ -99,40 +99,48 @@ jobs:
       - name: 准备Release文件列表
         id: release_files
         run: |
-          # 收集所有存在的文件
-          FILES_TO_UPLOAD=""
+          # 创建临时文件列表
+          FILE_LIST=$(mktemp)
           
           # 检查固定名称的CRX文件
           if [ -f "lingdong-search.crx" ]; then
-            FILES_TO_UPLOAD="$FILES_TO_UPLOAD lingdong-search.crx"
+            echo "lingdong-search.crx" >> "$FILE_LIST"
             echo "✅ 找到: lingdong-search.crx"
           fi
           
           # 检查固定名称的ZIP文件
           if [ -f "lingdong-search.zip" ]; then
-            FILES_TO_UPLOAD="$FILES_TO_UPLOAD lingdong-search.zip"
+            echo "lingdong-search.zip" >> "$FILE_LIST"
             echo "✅ 找到: lingdong-search.zip"
           fi
           
           # 检查带版本号的文件（排除固定名称的，避免重复）
           for crx in *.crx; do
             if [ -f "$crx" ] && [ "$crx" != "lingdong-search.crx" ]; then
-              FILES_TO_UPLOAD="$FILES_TO_UPLOAD $crx"
+              echo "$crx" >> "$FILE_LIST"
               echo "✅ 找到: $crx"
             fi
           done
           
           for zip in *.zip; do
             if [ -f "$zip" ] && [ "$zip" != "lingdong-search.zip" ]; then
-              FILES_TO_UPLOAD="$FILES_TO_UPLOAD $zip"
+              echo "$zip" >> "$FILE_LIST"
               echo "✅ 找到: $zip"
             fi
           done
           
-          # 移除前导空格并输出
-          FILES_TO_UPLOAD=$(echo "$FILES_TO_UPLOAD" | sed 's/^ *//')
-          echo "files=$FILES_TO_UPLOAD" >> $GITHUB_OUTPUT
-          echo "📦 将上传的文件: $FILES_TO_UPLOAD"
+          # 将文件列表内容作为multiline输出
+          if [ -s "$FILE_LIST" ]; then
+            echo "files<<EOF" >> $GITHUB_OUTPUT
+            cat "$FILE_LIST" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "📦 将上传的文件："
+            cat "$FILE_LIST"
+          else
+            echo "⚠️ 未找到任何文件可上传"
+          fi
+          
+          rm -f "$FILE_LIST"
       
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
