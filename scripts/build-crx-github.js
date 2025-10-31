@@ -227,11 +227,44 @@ async function buildExtension() {
   if (crxResult && fs.existsSync(crxFile)) {
     files.push(crxFile);
     console.log(`✅ CRX文件创建成功: ${crxFile}`);
+    
+    // 3. 创建固定文件名的副本（用于最新版本直链）
+    const fixedZipFile = path.join(__dirname, '..', 'lingdong-search.zip');
+    const fixedCrxFile = path.join(__dirname, '..', 'lingdong-search.crx');
+    
+    try {
+      // 复制 ZIP 文件
+      if (fs.existsSync(zipFile)) {
+        fs.copyFileSync(zipFile, fixedZipFile);
+        files.push(fixedZipFile);
+        console.log(`✅ 固定文件名ZIP文件创建成功: ${fixedZipFile}`);
+      }
+      
+      // 复制 CRX 文件
+      fs.copyFileSync(crxFile, fixedCrxFile);
+      files.push(fixedCrxFile);
+      console.log(`✅ 固定文件名CRX文件创建成功: ${fixedCrxFile}`);
+      console.log(`📌 最新版本直链: https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`);
+    } catch (err) {
+      console.warn(`⚠️ 创建固定文件名副本失败: ${err.message}`);
+      // 不抛出错误，继续执行
+    }
   } else {
     // CRX生成失败，但仍然继续（至少要有ZIP）
     console.error('❌ CRX文件生成失败！');
     console.error('⚠️ 警告：Release中将只有ZIP文件');
-    // 不抛出错误，至少保证ZIP可用
+    
+    // 即使CRX失败，也要创建固定文件名的ZIP
+    const fixedZipFile = path.join(__dirname, '..', 'lingdong-search.zip');
+    try {
+      if (fs.existsSync(zipFile)) {
+        fs.copyFileSync(zipFile, fixedZipFile);
+        files.push(fixedZipFile);
+        console.log(`✅ 固定文件名ZIP文件创建成功: ${fixedZipFile}`);
+      }
+    } catch (err) {
+      console.warn(`⚠️ 创建固定文件名ZIP副本失败: ${err.message}`);
+    }
   }
   
   console.log(`✨ 构建完成，共生成 ${files.length} 个文件`);

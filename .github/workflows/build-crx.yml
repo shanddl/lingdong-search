@@ -62,6 +62,10 @@ jobs:
           ZIP_FILE="${BASE_NAME}.zip"
           CRX_FILE="${BASE_NAME}.crx"
           
+          # 固定文件名的文件（用于最新版本直链）
+          FIXED_ZIP_FILE="lingdong-search.zip"
+          FIXED_CRX_FILE="lingdong-search.crx"
+          
           FILES_FOUND=""
           
           if [ -f "$ZIP_FILE" ]; then
@@ -79,6 +83,19 @@ jobs:
             FILES_FOUND="$FILES_FOUND $CRX_FILE"
           else
             echo "⚠️ CRX file not found: $CRX_FILE (only ZIP will be available)"
+          fi
+          
+          # 检查固定文件名的文件（用于最新版本直链）
+          if [ -f "$FIXED_ZIP_FILE" ]; then
+            echo "✅ Found fixed ZIP file: $FIXED_ZIP_FILE"
+            echo "fixed_zip_file=$FIXED_ZIP_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $FIXED_ZIP_FILE"
+          fi
+          
+          if [ -f "$FIXED_CRX_FILE" ]; then
+            echo "✅ Found fixed CRX file: $FIXED_CRX_FILE"
+            echo "fixed_crx_file=$FIXED_CRX_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $FIXED_CRX_FILE"
           fi
           
           # 输出所有文件列表（用换行分隔）
@@ -107,12 +124,19 @@ jobs:
           ZIP_FILE="${BASE_NAME}.zip"
           CRX_FILE="${BASE_NAME}.crx"
           
+          # 固定文件名的文件（用于最新版本直链）
+          FIXED_ZIP_FILE="lingdong-search.zip"
+          FIXED_CRX_FILE="lingdong-search.crx"
+          
           echo "🔍 Checking files for release..."
           echo "ZIP_FILE: $ZIP_FILE"
           echo "CRX_FILE: $CRX_FILE"
+          echo "FIXED_ZIP_FILE: $FIXED_ZIP_FILE"
+          echo "FIXED_CRX_FILE: $FIXED_CRX_FILE"
           
           RELEASE_FILES=""
           
+          # 带版本号的文件
           if [ -f "$ZIP_FILE" ]; then
             echo "✅ ZIP file exists: $ZIP_FILE"
             RELEASE_FILES="$RELEASE_FILES$ZIP_FILE\n"
@@ -125,6 +149,21 @@ jobs:
             RELEASE_FILES="$RELEASE_FILES$CRX_FILE\n"
           else
             echo "⚠️ CRX file not found: $CRX_FILE"
+          fi
+          
+          # 固定文件名的文件（用于最新版本直链）
+          if [ -f "$FIXED_ZIP_FILE" ]; then
+            echo "✅ Fixed ZIP file exists: $FIXED_ZIP_FILE"
+            RELEASE_FILES="$RELEASE_FILES$FIXED_ZIP_FILE\n"
+          else
+            echo "⚠️ Fixed ZIP file not found: $FIXED_ZIP_FILE"
+          fi
+          
+          if [ -f "$FIXED_CRX_FILE" ]; then
+            echo "✅ Fixed CRX file exists: $FIXED_CRX_FILE"
+            RELEASE_FILES="$RELEASE_FILES$FIXED_CRX_FILE\n"
+          else
+            echo "⚠️ Fixed CRX file not found: $FIXED_CRX_FILE"
           fi
           
           echo "files<<EOF" >> $GITHUB_OUTPUT
@@ -147,9 +186,13 @@ jobs:
             - [📦 下载 ZIP 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.zip)
             - [📦 下载 CRX 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.crx)
             
-            **文件名格式（统一前缀）：**
-            - ZIP: `lingdong-search-v${{ steps.manifest.outputs.version }}.zip`
-            - CRX: `lingdong-search-v${{ steps.manifest.outputs.version }}.crx`
+            **文件名格式：**
+            - 带版本号：`lingdong-search-v${{ steps.manifest.outputs.version }}.zip/crx`
+            - 固定文件名（最新版本直链）：`lingdong-search.zip/crx`
+            
+            **最新版本直链（自动指向最新版本）：**
+            - ZIP: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.zip`
+            - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更

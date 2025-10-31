@@ -9,10 +9,11 @@
 
 **🔗 直接下载链接（始终指向最新版本）：**
 ```
-https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
+ZIP: https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.zip
+CRX: https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
 ```
 
-> **提示**：此链接会自动重定向到最新版本的 CRX 文件，无需手动更新版本号。
+> **提示**：这些链接会自动指向最新版本的文件，无需手动更新版本号。每次发布新版本时，固定文件名的文件会自动更新为最新版本。
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-brightgreen)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
