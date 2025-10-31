@@ -9,9 +9,14 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      version:
-        description: '版本号 (例如: 1.0.1)'
+      create_release:
+        description: '是否创建 Release'
         required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   build:
@@ -131,7 +136,11 @@ jobs:
           fi
 
       - name: Create Release
-        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && steps.check_crx.outputs.exists == 'true'
+        if: |
+          steps.check_crx.outputs.exists == 'true' && (
+            startsWith(github.ref, 'refs/tags/v') || 
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'false')
+          )
         uses: softprops/action-gh-release@v1
         with:
           files: |
