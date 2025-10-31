@@ -4,6 +4,9 @@
 
 一个功能强大、高度可定制的Chrome浏览器新标签页扩展
 
+[![下载最新版](https://img.shields.io/badge/下载-CRX文件-blue?style=for-the-badge&logo=google-chrome)](https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search-v1.0.crx)
+[![Releases](https://img.shields.io/badge/查看所有版本-Release-green?style=for-the-badge&logo=github)](https://github.com/shanddl/lingdong-search/releases)
+
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-brightgreen)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -47,7 +50,8 @@
 ### 方式一：从 GitHub Releases 安装（推荐）
 
 1. **下载 CRX 文件**
-   - 访问项目的 [Releases](https://github.com/你的用户名/你的仓库名/releases) 页面
+   - 点击上方 **"下载最新版"** 按钮直接下载
+   - 或访问 [Releases](https://github.com/shanddl/lingdong-search/releases) 页面查看所有版本
    - 下载最新版本的 `.crx` 文件
 
 2. **安装扩展**
