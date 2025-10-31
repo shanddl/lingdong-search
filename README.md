@@ -4,13 +4,15 @@
 
 一个功能强大、高度可定制的Chrome浏览器新标签页扩展
 
-[![下载最新版](https://img.shields.io/badge/下载-CRX文件-blue?style=for-the-badge&logo=google-chrome)](https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx)
+[![下载最新版](https://img.shields.io/badge/下载-CRX文件-blue?style=for-the-badge&logo=google-chrome)](https://github.com/shanddl/lingdong-search/releases/latest)
 [![Releases](https://img.shields.io/badge/查看所有版本-Release-green?style=for-the-badge&logo=github)](https://github.com/shanddl/lingdong-search/releases)
 
-**🔗 直接下载链接：**
+**🔗 直接下载链接（访问 Releases 页面获取最新下载链接）：**
 ```
-https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx
+https://github.com/shanddl/lingdong-search/releases/latest
 ```
+
+> **提示**：GitHub Releases 的直链需要精确的文件名。请访问上面的链接，在 Assets 中找到 `.crx` 文件，右键复制链接地址。
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-brightgreen)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -55,8 +57,9 @@ https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-sea
 ### 方式一：从 GitHub Releases 安装（推荐）
 
 1. **下载 CRX 文件**
-   - 点击上方 **"下载最新版"** 按钮直接下载
-   - **直接下载链接**：`https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx`
+   - 点击上方 **"下载最新版"** 按钮跳转到 Releases 页面
+   - 在 Releases 页面的 **Assets** 部分，找到 `.crx` 文件
+   - 点击文件名即可下载，或右键选择"复制链接地址"获取直链
    - 或访问 [Releases](https://github.com/shanddl/lingdong-search/releases) 页面查看所有版本
 
 2. **安装扩展**
