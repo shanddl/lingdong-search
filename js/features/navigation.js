@@ -13,10 +13,48 @@ import { eventManager } from '../eventManager.js';
 // 存储导航模块的事件监听器ID
 const navigationEventIds = [];
 
+// 【性能优化】缓存导航组Map，避免重复查找
+let navigationGroupsMap = null;
+
+/**
+ * 更新导航组Map缓存
+ */
+const updateNavigationGroupsMap = () => {
+    if (state.userData?.navigationGroups) {
+        navigationGroupsMap = new Map(
+            state.userData.navigationGroups.map(g => [g.id, g])
+        );
+    } else {
+        navigationGroupsMap = null;
+    }
+};
+
+/**
+ * 根据ID获取导航组（使用缓存优化性能）
+ */
+const getGroupById = (groupId) => {
+    if (!navigationGroupsMap) {
+        updateNavigationGroupsMap();
+    }
+    return navigationGroupsMap?.get(groupId) || null;
+};
+
+/**
+ * 根据ID在组中查找导航项
+ */
+const getItemById = (groupId, itemId) => {
+    const group = getGroupById(groupId);
+    if (!group?.items) return null;
+    return group.items.find(i => i.id === itemId) || null;
+};
+
 // =================================================================
 // 导航模块
 // =================================================================
 export const navigationModule = {
+    // 【性能优化】暴露缓存更新方法供外部调用
+    updateCache: updateNavigationGroupsMap,
+    
     state: {
         draggedItemId: null,
         dragOverGroupId: null,
@@ -75,7 +113,7 @@ export const navigationModule = {
             title.textContent = '编辑网站';
             const closeBtn = document.createElement('button');
             closeBtn.className = 'modal-close-btn';
-            closeBtn.innerHTML = '&times;';
+            closeBtn.textContent = '×'; // 【安全性优化】使用textContent替代innerHTML
             header.appendChild(title);
             header.appendChild(closeBtn);
             
@@ -224,28 +262,48 @@ export const navigationModule = {
                     }
 
                     iconSourcesList.style.display = 'block';
-                    iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">正在测试图标源...</div>';
+                    // 【安全性优化】使用textContent替代innerHTML
+                    iconSourcesContent.textContent = '';
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.style.color = 'var(--text-secondary)';
+                    loadingDiv.textContent = '正在测试图标源...';
+                    iconSourcesContent.appendChild(loadingDiv);
 
                     const sources = aiManager.getIconSources(urlValue);
                     
                     if (sources.length === 0) {
-                        iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">无法获取图标源</div>';
+                        iconSourcesContent.textContent = '';
+                        const errorDiv = document.createElement('div');
+                        errorDiv.style.color = 'var(--text-secondary)';
+                        errorDiv.textContent = '无法获取图标源';
+                        iconSourcesContent.appendChild(errorDiv);
                         utils.showToast('无法获取图标源', 'error');
                         return;
                     }
 
-                    iconSourcesContent.innerHTML = '';
+                    iconSourcesContent.textContent = '';
 
                     sources.forEach((source) => {
                         const sourceItem = document.createElement('div');
                         sourceItem.className = 'icon-source-item';
                         
-                        sourceItem.innerHTML = `
-                            <img src="${source.url}" 
-                                 onerror="this.style.display='none'">
-                            <span style="color: var(--text-primary);">${source.name}</span>
-                            <span style="color: var(--text-secondary); font-size: 10px;">${source.description}</span>
-                        `;
+                        // 【安全性优化】使用createElement替代innerHTML
+                        const img = document.createElement('img');
+                        img.src = sanitizer.sanitizeIconUrl(source.url);
+                        img.onerror = function() { this.style.display = 'none'; };
+                        
+                        const nameSpan = document.createElement('span');
+                        nameSpan.style.color = 'var(--text-primary)';
+                        nameSpan.textContent = source.name;
+                        
+                        const descSpan = document.createElement('span');
+                        descSpan.style.color = 'var(--text-secondary)';
+                        descSpan.style.fontSize = '10px';
+                        descSpan.textContent = source.description;
+                        
+                        sourceItem.appendChild(img);
+                        sourceItem.appendChild(nameSpan);
+                        sourceItem.appendChild(descSpan);
                         
                         sourceItem.addEventListener('click', () => {
                             iconGroup.input.value = source.url;
@@ -259,7 +317,7 @@ export const navigationModule = {
                     
                     utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
                 } catch (error) {
-                    console.error('测试图标源失败:', error);
+                    logger.error('测试图标源失败:', error);
                     utils.showToast('测试图标源失败: ' + error.message, 'error');
                 }
             });
@@ -290,41 +348,73 @@ export const navigationModule = {
         tabs: () => {
             if (!dom.navigationTabs) return;
             
-            const fragment = document.createDocumentFragment();
-            if (!state.userData.navigationGroups || state.userData.navigationGroups.length === 0) return;
+            if (!state.userData.navigationGroups || state.userData.navigationGroups.length === 0) {
+                dom.navigationTabs.innerHTML = '';
+                return;
+            }
             
-            state.userData.navigationGroups.forEach(group => {
-                const tab = document.createElement('button');
-                tab.className = 'nav-tab';
-                tab.textContent = group.name;
-                tab.dataset.groupId = group.id;
-                // 添加 draggable 属性以支持拖放
-                tab.draggable = true;
-                if (group.id === state.activeNavigationGroupId) {
-                    tab.classList.add('active');
+            // 【性能优化】增量更新tabs，避免全量重建
+            const existingTabs = new Map();
+            const existingTabsOrder = [];
+            Array.from(dom.navigationTabs.querySelectorAll('.nav-tab')).forEach(tab => {
+                const groupId = tab.dataset.groupId;
+                if (groupId) {
+                    existingTabs.set(groupId, tab);
+                    existingTabsOrder.push(groupId);
                 }
-                fragment.appendChild(tab);
             });
             
-            dom.navigationTabs.innerHTML = '';
-            dom.navigationTabs.appendChild(fragment);
+            // 检查是否需要重建（数量变化或顺序变化）
+            const currentGroupIds = state.userData.navigationGroups.map(g => g.id);
+            const needsRebuild = currentGroupIds.length !== existingTabsOrder.length ||
+                !currentGroupIds.every((id, index) => id === existingTabsOrder[index]);
+            
+            if (needsRebuild) {
+                // 【修复】需要重建：清空并重新创建（数量或顺序变化）
+                const fragment = document.createDocumentFragment();
+                state.userData.navigationGroups.forEach(group => {
+                    const tab = document.createElement('button');
+                    tab.className = 'nav-tab';
+                    tab.textContent = group.name;
+                    tab.dataset.groupId = group.id;
+                    tab.draggable = true;
+                    if (group.id === state.activeNavigationGroupId) {
+                        tab.classList.add('active');
+                    }
+                    fragment.appendChild(tab);
+                });
+                dom.navigationTabs.innerHTML = '';
+                dom.navigationTabs.appendChild(fragment);
+            } else {
+                // 【修复】增量更新：只更新变化的tab（数量和顺序都未变化）
+                state.userData.navigationGroups.forEach((group, index) => {
+                    let tab = existingTabs.get(group.id);
+                    if (tab) {
+                        // 更新文本（如果变化）
+                        if (tab.textContent !== group.name) {
+                            tab.textContent = group.name;
+                        }
+                        // 更新active状态
+                        tab.classList.toggle('active', group.id === state.activeNavigationGroupId);
+                    }
+                });
+                
+                // 移除不存在的tabs（理论上不应该发生，但作为安全措施）
+                existingTabs.forEach((tab, groupId) => {
+                    if (!currentGroupIds.includes(groupId)) {
+                        tab.remove();
+                    }
+                });
+            }
         },
         grid: () => {
             if (!dom.navigationGrid) return;
             
-            // 标记正在更新，禁用所有动画
+            // 【性能优化】标记正在更新，禁用所有动画
             document.body.setAttribute('data-updating', 'true');
             
-            // 【内存优化】清理旧的滚动监听器（如果存在）
+            // 获取旧项目用于CSS过渡（已简化：不再需要清理滚动监听器，因为使用了原生懒加载）
             const oldNavItems = dom.navigationGrid.querySelectorAll('.nav-item');
-            oldNavItems.forEach(item => {
-                if (item._iconScrollHandler) {
-                    window.removeEventListener('scroll', item._iconScrollHandler, { passive: true });
-                    item._iconScrollHandler = null;
-                }
-            });
-            
-            dom.navigationGrid.innerHTML = '';
             
             logger.debug('=== Rendering Navigation Grid ===');
             logger.debug('Total navigation groups:', state.userData?.navigationGroups?.length || 0);
@@ -348,8 +438,9 @@ export const navigationModule = {
                 return;
             }
             
-            // 查找活动组
-            let activeGroup = state.userData.navigationGroups.find(g => g.id === state.activeNavigationGroupId);
+            // 【性能优化】使用缓存查找活动组
+            updateNavigationGroupsMap(); // 确保缓存最新
+            let activeGroup = getGroupById(state.activeNavigationGroupId);
             
             // 如果找不到活动组，静默切换到第一个组（这是正常的恢复机制）
             if (!activeGroup) {
@@ -384,118 +475,80 @@ export const navigationModule = {
                 document.body.removeAttribute('data-updating');
                 return;
             }
-            dom.navigationGrid.style.display = 'flex';
-
-            const fragment = document.createDocumentFragment();
             
-            activeGroup.items.forEach(item => {
-                // 使用div而不是a标签，完全隐藏URL显示
-                const navItem = document.createElement('div');
-                navItem.className = 'nav-item';
-                navItem.dataset.url = item.url; // 将真实URL存储在data属性中
-                navItem.draggable = true;
-                navItem.dataset.itemId = item.id;
-                navItem.style.cursor = 'pointer'; // 添加指针样式
-                
-                const iconWrapper = document.createElement('div');
-                iconWrapper.className = 'nav-item-icon-wrapper';
-                
-                const icon = document.createElement('img');
-                // 【内存优化】使用懒加载，减少初始内存占用
-                const iconUrl = sanitizer.sanitizeIconUrl(item.icon);
-                icon.className = 'nav-item-icon';
-                icon.alt = item.title;
-                icon.loading = 'lazy'; // 启用原生懒加载
-                
-                // 【内存优化】智能懒加载图标：仅当图标进入视口时才加载
-                // 检查元素是否在视口内，决定立即加载还是通过滚动监听器加载
-                const checkAndLoadIcon = () => {
-                    if (!navItem.isConnected || icon.src) return; // 已加载或元素已移除
-                    
-                    const rect = navItem.getBoundingClientRect();
-                    // 检查是否在视口内（上下各200px的缓冲区）
-                    const isVisible = rect.top < window.innerHeight + 200 && rect.bottom > -200;
-                    
-                    if (isVisible) {
-                        // 在视口内，立即加载并移除滚动监听器
-                        icon.src = iconUrl;
-                        if (navItem._iconScrollHandler) {
-                            window.removeEventListener('scroll', navItem._iconScrollHandler, { passive: true });
-                            navItem._iconScrollHandler = null;
-                        }
-                    }
-                };
-                
-                // 【内存优化】滚动监听器：当图标进入视口时加载
-                // 使用一次性监听器，加载后自动移除
-                const scrollHandler = () => {
-                    if (!icon.src && navItem.isConnected) {
-                        checkAndLoadIcon();
-                    } else if (!navItem.isConnected || icon.src) {
-                        // 元素已被移除或已加载，清理监听器
-                        window.removeEventListener('scroll', scrollHandler, { passive: true });
-                        navItem._iconScrollHandler = null;
-                    }
-                };
-                
-                // 保存滚动监听器引用以便后续清理
-                navItem._iconScrollHandler = scrollHandler;
-                
-                // 立即检查一次（可能已经在视口内）
-                requestAnimationFrame(checkAndLoadIcon);
-                
-                // 如果不在视口内，添加滚动监听器（被动监听，性能优化）
-                // 使用 requestIdleCallback 延迟添加，减少初始开销
-                if (typeof requestIdleCallback === 'function') {
-                    requestIdleCallback(() => {
-                        // 再次检查，可能在延迟期间已经加载
-                        if (!icon.src && navItem.isConnected && navItem._iconScrollHandler) {
-                            window.addEventListener('scroll', scrollHandler, { passive: true });
-                        }
-                    }, { timeout: 500 });
-                } else {
-                    // 降级方案：延迟添加滚动监听器
-                    setTimeout(() => {
-                        if (!icon.src && navItem.isConnected && navItem._iconScrollHandler) {
-                            window.addEventListener('scroll', scrollHandler, { passive: true });
-                        }
-                    }, 100);
-                }
-
-                // 使用箭头函数处理图标加载失败
-                icon.addEventListener('error', function handleError() {
-                    this.removeEventListener('error', handleError);
-                    // 生成带首字母的占位符
-                    const firstChar = item.title.charAt(0).toUpperCase();
-                    this.src = `https://placehold.co/32x32/f0f0f0/000000?text=${encodeURIComponent(firstChar)}`;
-                });
-                
-                iconWrapper.appendChild(icon);
-                
-                const title = document.createElement('span');
-                title.className = 'nav-item-title';
-                title.textContent = item.title;
-                
-                navItem.appendChild(iconWrapper);
-                navItem.appendChild(title);
-                
-                // 添加点击事件处理
-                navItem.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const url = navItem.dataset.url;
-                    if (url) {
-                        window.open(url, '_blank');
-                    }
-                });
-                
-                fragment.appendChild(navItem);
-            });
+            // 【性能优化】使用CSS过渡替代直接清空，减少视觉闪烁
+            // 先添加淡出效果（如果有旧内容）
+            if (oldNavItems.length > 0) {
+                dom.navigationGrid.style.opacity = '0.3';
+                dom.navigationGrid.style.transition = 'opacity 0.1s ease-out';
+            }
             
-            dom.navigationGrid.appendChild(fragment);
-            
-            // 立即移除更新标志，恢复正常状态
+            // 在下一个动画帧清空并重建，给CSS过渡时间
             requestAnimationFrame(() => {
-                document.body.removeAttribute('data-updating');
+                dom.navigationGrid.innerHTML = '';
+                dom.navigationGrid.style.display = 'flex';
+                dom.navigationGrid.style.opacity = '0';
+                dom.navigationGrid.style.transition = 'opacity 0.2s ease-in';
+
+                const fragment = document.createDocumentFragment();
+                
+                activeGroup.items.forEach(item => {
+                    // 使用div而不是a标签，完全隐藏URL显示
+                    const navItem = document.createElement('div');
+                    navItem.className = 'nav-item';
+                    navItem.dataset.url = item.url;
+                    navItem.draggable = true;
+                    navItem.dataset.itemId = item.id;
+                    navItem.style.cursor = 'pointer';
+                    
+                    const iconWrapper = document.createElement('div');
+                    iconWrapper.className = 'nav-item-icon-wrapper';
+                    
+                    const icon = document.createElement('img');
+                    const iconUrl = sanitizer.sanitizeIconUrl(item.icon);
+                    icon.className = 'nav-item-icon';
+                    icon.alt = item.title;
+                    
+                    // 【性能优化】切换分类时简化懒加载：直接使用原生懒加载
+                    // 浏览器会自动处理视口检测，避免复杂的滚动监听器
+                    icon.loading = 'lazy';
+                    icon.src = iconUrl;
+                    
+                    // 使用箭头函数处理图标加载失败
+                    icon.addEventListener('error', function handleError() {
+                        this.removeEventListener('error', handleError);
+                        const firstChar = item.title.charAt(0).toUpperCase();
+                        this.src = `https://placehold.co/32x32/f0f0f0/000000?text=${encodeURIComponent(firstChar)}`;
+                    });
+                    
+                    iconWrapper.appendChild(icon);
+                    
+                    const title = document.createElement('span');
+                    title.className = 'nav-item-title';
+                    title.textContent = item.title;
+                    
+                    navItem.appendChild(iconWrapper);
+                    navItem.appendChild(title);
+                    
+                    // 【性能优化】不再为每个项单独添加点击监听器，使用事件委托在grid容器上统一处理
+                    // 点击事件已通过init()中的事件委托统一处理
+                    
+                    fragment.appendChild(navItem);
+                });
+                
+                dom.navigationGrid.appendChild(fragment);
+                
+                // 淡入效果
+                requestAnimationFrame(() => {
+                    dom.navigationGrid.style.opacity = '1';
+                    
+                    // 移除过渡和更新标志
+                    setTimeout(() => {
+                        dom.navigationGrid.style.opacity = '';
+                        dom.navigationGrid.style.transition = '';
+                        document.body.removeAttribute('data-updating');
+                    }, 200);
+                });
             });
         },
         contextMenu: (x, y) => {
@@ -640,25 +693,8 @@ export const navigationModule = {
             dom.navGroupsList.innerHTML = '';
             dom.navGroupsList.appendChild(fragment);
             
-            dom.navGroupsList.querySelectorAll('[data-action="edit-nav-group"]').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const groupId = e.target.closest('.list-item').dataset.id;
-                    navigationModule.handlers.onEditGroupStart(groupId);
-                });
-            });
-            dom.navGroupsList.querySelectorAll('[data-action="delete-nav-group"]').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const groupId = e.target.closest('.list-item').dataset.id;
-                    navigationModule.handlers.onDeleteGroup(groupId);
-                });
-            });
-            dom.navGroupsList.querySelectorAll('[data-action="move-nav-group"]').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const groupId = e.target.closest('.list-item').dataset.id;
-                    const direction = e.target.dataset.direction;
-                    navigationModule.handlers.onMoveGroup(groupId, direction);
-                });
-            });
+            // 【性能优化】不再为每个按钮单独添加监听器，使用事件委托在init()中统一处理
+            // 事件委托已通过init()中的eventManager.delegate统一管理，避免内存泄漏
         }
     },
 
@@ -666,6 +702,17 @@ export const navigationModule = {
         init: () => {
             // 导航网格事件（使用 eventManager 管理）
             if (dom.navigationGrid) {
+                // 【性能优化】使用事件委托处理导航项点击，避免为每个项单独添加监听器
+                navigationEventIds.push(
+                    eventManager.delegate(dom.navigationGrid, 'click', '.nav-item', (e) => {
+                        e.preventDefault();
+                        const url = e.target.closest('.nav-item')?.dataset.url;
+                        if (url) {
+                            window.open(url, '_blank');
+                        }
+                    })
+                );
+                
                 navigationEventIds.push(
                     eventManager.add(dom.navigationGrid, 'contextmenu', navigationModule.handlers.onItemContextMenu)
                 );
@@ -741,18 +788,63 @@ export const navigationModule = {
                     eventManager.add(dom.cancelNavGroupEditBtn, 'click', navigationModule.handlers.onCancelGroupEdit)
                 );
             }
+            
+            // 【性能优化】使用事件委托处理导航组管理列表中的按钮点击，避免每次渲染时重复添加监听器
+            if (dom.navGroupsList) {
+                navigationEventIds.push(
+                    eventManager.delegate(dom.navGroupsList, 'click', '[data-action="edit-nav-group"]', (e) => {
+                        const groupId = e.target.closest('.list-item')?.dataset.id;
+                        if (groupId) {
+                            navigationModule.handlers.onEditGroupStart(groupId);
+                        }
+                    })
+                );
+                navigationEventIds.push(
+                    eventManager.delegate(dom.navGroupsList, 'click', '[data-action="delete-nav-group"]', (e) => {
+                        const groupId = e.target.closest('.list-item')?.dataset.id;
+                        if (groupId) {
+                            navigationModule.handlers.onDeleteGroup(groupId);
+                        }
+                    })
+                );
+                navigationEventIds.push(
+                    eventManager.delegate(dom.navGroupsList, 'click', '[data-action="move-nav-group"]', (e) => {
+                        const groupId = e.target.closest('.list-item')?.dataset.id;
+                        const direction = e.target.dataset.direction;
+                        if (groupId && direction) {
+                            navigationModule.handlers.onMoveGroup(groupId, direction);
+                        }
+                    })
+                );
+            }
         },
         
         onTabClick: (e) => {
             const tab = e.target.closest('.nav-tab');
             if (tab && tab.dataset.groupId) {
-                state.activeNavigationGroupId = tab.dataset.groupId;
+                // 【性能优化】立即更新UI，不等待保存完成
+                const targetGroupId = tab.dataset.groupId;
+                state.activeNavigationGroupId = targetGroupId;
+                
+                // 【性能优化】立即更新tabs的active状态（避免闪烁）
+                // 使用事件目标而非查询所有tabs，减少DOM操作
+                if (dom.navigationTabs) {
+                    const allTabs = dom.navigationTabs.querySelectorAll('.nav-tab');
+                    allTabs.forEach(t => {
+                        t.classList.toggle('active', t.dataset.groupId === targetGroupId);
+                    });
+                }
+                
+                // 立即渲染grid（异步执行以避免阻塞）
+                requestAnimationFrame(() => {
+                    navigationModule.render.grid();
+                });
+                
+                // 异步保存，不阻塞UI更新
                 core.saveUserData((error) => {
                     if (error) {
-                        utils.showToast('保存失败: ' + error.message, 'error');
-                        
-                    } else {
-                        navigationModule.render.all();
+                        logger.warn('保存导航组切换失败:', error);
+                        // 保存失败不影响UI，静默处理或显示轻量提示
                     }
                 });
             }
@@ -821,9 +913,10 @@ export const navigationModule = {
             domSafe.showConfirm(
                 '您确定要删除这个导航项吗？\n此操作无法撤销。',
                 () => {
-                const group = state.userData.navigationGroups.find(g => g.id === state.activeNavigationGroupId);
+                const group = getGroupById(state.activeNavigationGroupId);
                 if (group) {
                     group.items = group.items.filter(i => i.id !== itemId);
+                    updateNavigationGroupsMap(); // 更新缓存
                     core.saveUserData((error) => {
                         if (error) {
                             utils.showToast('删除失败: ' + error.message, 'error');
@@ -840,9 +933,9 @@ export const navigationModule = {
             logger.debug('onItemEdit 被调用, itemId:', itemId);
             const currentGroupId = state.activeNavigationGroupId;
             logger.debug('当前分组ID:', currentGroupId);
-            const group = state.userData.navigationGroups.find(g => g.id === currentGroupId);
+            const group = getGroupById(currentGroupId);
             logger.debug('找到的分组:', group);
-            const item = group ? group.items.find(i => i.id === itemId) : null;
+            const item = getItemById(currentGroupId, itemId);
             logger.debug('找到的导航项:', item);
             if (!item) {
                 logger.warn('未找到导航项, itemId:', itemId);
@@ -852,18 +945,23 @@ export const navigationModule = {
             logger.debug('准备创建编辑模态框');
             navigationModule.utils.createNavItemEditModal(item, currentGroupId, (updatedItem, oldGroupId, newGroupId) => {
                 if (oldGroupId === newGroupId) {
-                    const groupToUpdate = state.userData.navigationGroups.find(g => g.id === oldGroupId);
-                    const itemIndex = groupToUpdate.items.findIndex(i => i.id === updatedItem.id);
-                    if (itemIndex > -1) {
-                        groupToUpdate.items[itemIndex] = updatedItem;
+                    const groupToUpdate = getGroupById(oldGroupId);
+                    if (groupToUpdate) {
+                        const itemIndex = groupToUpdate.items.findIndex(i => i.id === updatedItem.id);
+                        if (itemIndex > -1) {
+                            groupToUpdate.items[itemIndex] = updatedItem;
+                        }
                     }
                 } else {
-                    const oldGroup = state.userData.navigationGroups.find(g => g.id === oldGroupId);
-                    const newGroup = state.userData.navigationGroups.find(g => g.id === newGroupId);
-                    oldGroup.items = oldGroup.items.filter(i => i.id !== updatedItem.id);
-                    newGroup.items.push(updatedItem);
+                    const oldGroup = getGroupById(oldGroupId);
+                    const newGroup = getGroupById(newGroupId);
+                    if (oldGroup && newGroup) {
+                        oldGroup.items = oldGroup.items.filter(i => i.id !== updatedItem.id);
+                        newGroup.items.push(updatedItem);
+                    }
                 }
                 
+                updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData((error) => {
                     if (error) {
                         utils.showToast('保存失败: ' + error.message, 'error');
@@ -890,7 +988,7 @@ export const navigationModule = {
             const draggedId = navigationModule.state.draggedItemId;
             if (!draggedId) return;
 
-            const group = state.userData.navigationGroups.find(g => g.id === state.activeNavigationGroupId);
+            const group = getGroupById(state.activeNavigationGroupId);
             if (!group) return;
 
             const itemIndex = group.items.findIndex(i => i.id === draggedId);
@@ -903,15 +1001,26 @@ export const navigationModule = {
                 group.items.push(movedItem);
             }
             
+            updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData(() => navigationModule.render.grid());
             navigationModule.state.draggedItemId = null;
         },
         onDragOverTab: (e) => {
-            e.preventDefault();
+            // 【修复】只处理导航项拖拽到标签的情况，忽略标签自身拖拽
+            if (navigationModule.state.draggedItemId) {
+                e.preventDefault();
+                const tab = e.target.closest('.nav-tab');
+                if (tab && !tab.classList.contains('active')) {
+                    tab.classList.add('drag-over');
+                    navigationModule.state.dragOverGroupId = tab.dataset.groupId;
+                }
+            }
+        },
+        onTabDragLeave: (e) => {
+            // 【修复】添加缺失的onTabDragLeave处理函数
             const tab = e.target.closest('.nav-tab');
-            if (tab && !tab.classList.contains('active')) {
-                tab.classList.add('drag-over');
-                navigationModule.state.dragOverGroupId = tab.dataset.groupId;
+            if (tab) {
+                tab.classList.remove('drag-over');
             }
         },
         onDropOnTab: (e) => {
@@ -924,14 +1033,15 @@ export const navigationModule = {
 
             if (!draggedId || !targetGroupId || targetGroupId === state.activeNavigationGroupId) return;
 
-            const sourceGroup = state.userData.navigationGroups.find(g => g.id === state.activeNavigationGroupId);
-            const targetGroup = state.userData.navigationGroups.find(g => g.id === targetGroupId);
+            const sourceGroup = getGroupById(state.activeNavigationGroupId);
+            const targetGroup = getGroupById(targetGroupId);
             if (!sourceGroup || !targetGroup) return;
 
             const itemIndex = sourceGroup.items.findIndex(i => i.id === draggedId);
             const [movedItem] = sourceGroup.items.splice(itemIndex, 1);
             targetGroup.items.push(movedItem);
 
+            updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData(() => {
                 utils.showToast(`已移动到 "${targetGroup.name}"`, 'success');
                 navigationModule.render.grid();
@@ -946,11 +1056,12 @@ export const navigationModule = {
             // 注意：不再使用modalManager，由handlers.js中的'manage-nav-groups'处理面板打开
         },
         onRenameGroup: (groupId) => {
-            const group = state.userData.navigationGroups.find(g => g.id === groupId);
+            const group = getGroupById(groupId);
             if (!group) return;
             const newName = prompt('请输入新的分类名称:', group.name);
             if (newName && newName.trim() !== '') {
                 group.name = newName.trim();
+                updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData(() => {
                     utils.showToast('重命名成功', 'success');
                     navigationModule.render.tabs();
@@ -963,15 +1074,16 @@ export const navigationModule = {
                 domSafe.showAlert('请至少保留一个分类。', 'error');
                 return;
             }
-            const group = state.userData.navigationGroups.find(g => g.id === groupId);
+            const group = getGroupById(groupId);
             if (group) {
                 // 使用安全的确认对话框（转义用户输入）
                 domSafe.showConfirm(
                     `您确定要删除分类\n"${sanitizer.escapeHtml(group.name)}"\n吗？\n此操作无法撤销。`,
                     () => {
                     state.userData.navigationGroups = state.userData.navigationGroups.filter(g => g.id !== groupId);
+                    updateNavigationGroupsMap(); // 更新缓存
                     if (state.activeNavigationGroupId === groupId) {
-                        state.activeNavigationGroupId = state.userData.navigationGroups[0].id;
+                        state.activeNavigationGroupId = state.userData.navigationGroups[0]?.id || null;
                     }
                     core.saveUserData(() => {
                         utils.showToast('删除成功', 'success');
@@ -987,7 +1099,7 @@ export const navigationModule = {
             }
         },
         onEditGroupStart: (groupId) => {
-            const group = state.userData.navigationGroups.find(g => g.id === groupId);
+            const group = getGroupById(groupId);
             if(!group) return;
             dom.navGroupFormTitle.textContent = '编辑分类';
             dom.navGroupEditId.value = groupId;
@@ -1008,13 +1120,14 @@ export const navigationModule = {
             const id = dom.navGroupEditId.value;
 
             if (id) { // Editing existing group
-                const group = state.userData.navigationGroups.find(g => g.id === id);
+                const group = getGroupById(id);
                 if (group) group.name = name;
             } else { // Adding new group
                 const newGroup = { id: `group_${Date.now()}`, name: name, items: [] };
                 state.userData.navigationGroups.push(newGroup);
             }
             
+            updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData((error) => {
                 if (error) {
                     utils.showToast('保存失败: ' + error.message, 'error');
@@ -1037,6 +1150,9 @@ export const navigationModule = {
 
             [groups[index], groups[newIndex]] = [groups[newIndex], groups[index]];
 
+            // 【修复】更新缓存
+            updateNavigationGroupsMap();
+            
             core.saveUserData(() => {
                 navigationModule.render.tabs();
                 navigationModule.render.groupManagementModal();
@@ -1084,33 +1200,53 @@ export const navigationModule = {
             }
         },
         
-        onTabDragOver: (e) => {
-            // 只处理导航标签本身的拖拽，忽略导航项的拖拽
-            if (navigationModule.state.draggedItemId) return;
+        onTabDragOver: (() => {
+            // 【修复】延迟创建throttle函数，避免模块初始化时访问未初始化的utils
+            let throttledHandler = null;
             
-            e.preventDefault();
+            const createThrottledHandler = () => {
+                if (!throttledHandler) {
+                    throttledHandler = utils.throttle((e, tab) => {
+                        if (!tab || !navigationModule.state.draggedTab) return;
+                        
+                        // 阻止在自身上放置
+                        if (tab === navigationModule.state.draggedTab) return;
+                        
+                        // 获取目标元素的边界矩形
+                        const rect = tab.getBoundingClientRect();
+                        
+                        // 确定光标在目标元素的左侧还是右侧
+                        const midpoint = rect.left + rect.width / 2;
+                        
+                        // 根据光标位置决定插入位置
+                        if (e.clientX < midpoint) {
+                            // 光标在左侧，将拖拽元素插入到目标元素之前
+                            tab.parentNode.insertBefore(navigationModule.state.draggedTab, tab);
+                        } else {
+                            // 光标在右侧，将拖拽元素插入到目标元素之后
+                            tab.parentNode.insertBefore(navigationModule.state.draggedTab, tab.nextSibling);
+                        }
+                    }, 50); // 每50ms最多执行一次
+                }
+                return throttledHandler;
+            };
             
-            const tab = e.target.closest('.nav-tab');
-            if (!tab || !navigationModule.state.draggedTab) return;
-            
-            // 阻止在自身上放置
-            if (tab === navigationModule.state.draggedTab) return;
-            
-            // 获取目标元素的边界矩形
-            const rect = tab.getBoundingClientRect();
-            
-            // 确定光标在目标元素的左侧还是右侧
-            const midpoint = rect.left + rect.width / 2;
-            
-            // 根据光标位置决定插入位置
-            if (e.clientX < midpoint) {
-                // 光标在左侧，将拖拽元素插入到目标元素之前
-                tab.parentNode.insertBefore(navigationModule.state.draggedTab, tab);
-            } else {
-                // 光标在右侧，将拖拽元素插入到目标元素之后
-                tab.parentNode.insertBefore(navigationModule.state.draggedTab, tab.nextSibling);
-            }
-        },
+            return (e) => {
+                // 【修复】只处理导航标签本身的拖拽，忽略导航项的拖拽
+                // 如果正在拖拽导航项，让onDragOverTab处理
+                if (navigationModule.state.draggedItemId) return;
+                
+                // 如果不在拖拽标签，也不处理
+                if (!navigationModule.state.draggedTab) return;
+                
+                e.preventDefault(); // preventDefault必须立即执行，不能被节流
+                
+                const tab = e.target.closest('.nav-tab');
+                if (tab) {
+                    createThrottledHandler()(e, tab);
+                }
+            };
+        })(),
         
         onTabDrop: (e) => {
             // 只处理导航标签本身的拖拽，忽略导航项的拖拽
@@ -1133,6 +1269,9 @@ export const navigationModule = {
                 const [movedGroup] = groups.splice(navigationModule.state.startingIndex, 1);
                 groups.splice(finalIndex, 0, movedGroup);
                 
+                // 更新缓存
+                updateNavigationGroupsMap();
+                
                 // 保存数据
                 core.saveUserData(() => {
                     // 重新渲染标签以确保UI与数据一致
@@ -1148,177 +1287,6 @@ export const navigationModule = {
             navigationEventIds.forEach(id => eventManager.remove(id));
             navigationEventIds.length = 0;
             logger.debug('Navigation module events cleaned up');
-        },
-        
-        // ===================================================================
-        // 导航项跨分类拖拽处理方法
-        // ===================================================================
-        
-        /**
-         * 导航项拖拽到标签上时 - 允许放置
-         */
-        onDragOverTab: (e) => {
-            const tab = e.target.closest('.nav-tab');
-            if (tab && navigationModule.state.draggedItemId) {
-                e.preventDefault(); // 允许放置
-                tab.classList.add('drag-over');
-                navigationModule.state.dragOverGroupId = tab.dataset.groupId;
-            }
-        },
-        
-        /**
-         * 导航项离开标签时 - 清除样式
-         */
-        onTabDragLeave: (e) => {
-            const tab = e.target.closest('.nav-tab');
-            if (tab) {
-                tab.classList.remove('drag-over');
-            }
-        },
-        
-        /**
-         * 导航项放置到标签上 - 移动到目标分类
-         */
-        onDropOnTab: (e) => {
-            e.preventDefault();
-            const tab = e.target.closest('.nav-tab');
-            if (tab) {
-                tab.classList.remove('drag-over');
-            }
-            
-            const targetGroupId = navigationModule.state.dragOverGroupId;
-            const draggedItemId = navigationModule.state.draggedItemId;
-            
-            if (!targetGroupId || !draggedItemId) return;
-            
-            // 找到被拖拽的项和目标分类
-            let draggedItem = null;
-            let sourceGroup = null;
-            
-            for (const group of state.userData.navigationGroups) {
-                const item = group.items.find(i => i.id === draggedItemId);
-                if (item) {
-                    draggedItem = item;
-                    sourceGroup = group;
-                    break;
-                }
-            }
-            
-            const targetGroup = state.userData.navigationGroups.find(g => g.id === targetGroupId);
-            
-            if (draggedItem && sourceGroup && targetGroup && sourceGroup.id !== targetGroup.id) {
-                // 从源分类移除
-                sourceGroup.items = sourceGroup.items.filter(i => i.id !== draggedItemId);
-                // 添加到目标分类
-                targetGroup.items.push(draggedItem);
-                
-                // 保存并刷新
-                core.saveUserData((error) => {
-                    if (error) {
-                        utils.showToast('移动失败', 'error');
-                    } else {
-                        utils.showToast(`已移动到"${targetGroup.name}"`, 'success');
-                        navigationModule.render.all();
-                    }
-                });
-            }
-            
-            // 清除状态
-            navigationModule.state.draggedItemId = null;
-            navigationModule.state.dragOverGroupId = null;
-        },
-        
-        // ===================================================================
-        // 标签拖拽排序处理方法
-        // ===================================================================
-        
-        /**
-         * 开始拖拽标签
-         */
-        onTabDragStart: (e) => {
-            const tab = e.target.closest('.nav-tab');
-            if (tab && tab.draggable) {
-                navigationModule.state.draggedTab = tab;
-                navigationModule.state.draggedGroupId = tab.dataset.groupId;
-                
-                // 查找当前标签的索引
-                const tabs = Array.from(dom.navigationTabs.querySelectorAll('.nav-tab'));
-                navigationModule.state.startingIndex = tabs.indexOf(tab);
-                
-                tab.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-            }
-        },
-        
-        /**
-         * 拖拽标签结束
-         */
-        onTabDragEnd: (e) => {
-            const tab = e.target.closest('.nav-tab');
-            if (tab) {
-                tab.classList.remove('dragging');
-            }
-            
-            // 清除所有拖拽样式
-            document.querySelectorAll('.nav-tab.drag-over').forEach(t => {
-                t.classList.remove('drag-over');
-            });
-            
-            navigationModule.state.draggedTab = null;
-            navigationModule.state.draggedGroupId = null;
-            navigationModule.state.startingIndex = null;
-        },
-        
-        /**
-         * 拖拽标签经过其他标签
-         */
-        onTabDragOver: (e) => {
-            const tab = e.target.closest('.nav-tab');
-            if (tab && navigationModule.state.draggedTab && tab !== navigationModule.state.draggedTab) {
-                e.preventDefault();
-                tab.classList.add('drag-over');
-                navigationModule.state.dragOverTabId = tab.dataset.groupId;
-            }
-        },
-        
-        /**
-         * 放置标签到新位置
-         */
-        onTabDrop: (e) => {
-            e.preventDefault();
-            
-            const targetTab = e.target.closest('.nav-tab');
-            if (targetTab) {
-                targetTab.classList.remove('drag-over');
-            }
-            
-            const draggedGroupId = navigationModule.state.draggedGroupId;
-            const targetGroupId = navigationModule.state.dragOverTabId;
-            
-            if (!draggedGroupId || !targetGroupId || draggedGroupId === targetGroupId) {
-                return;
-            }
-            
-            // 找到两个分类的索引
-            const draggedIndex = state.userData.navigationGroups.findIndex(g => g.id === draggedGroupId);
-            const targetIndex = state.userData.navigationGroups.findIndex(g => g.id === targetGroupId);
-            
-            if (draggedIndex > -1 && targetIndex > -1) {
-                // 移动分类
-                const [draggedGroup] = state.userData.navigationGroups.splice(draggedIndex, 1);
-                state.userData.navigationGroups.splice(targetIndex, 0, draggedGroup);
-                
-                // 保存并刷新
-                core.saveUserData((error) => {
-                    if (error) {
-                        utils.showToast('排序失败', 'error');
-                    } else {
-                        navigationModule.render.all();
-                    }
-                });
-            }
-            
-            navigationModule.state.dragOverTabId = null;
         }
     }
 };

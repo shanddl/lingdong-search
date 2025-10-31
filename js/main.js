@@ -574,6 +574,11 @@ function init() {
                     // 设置 activeNavigationGroupId，Proxy 会自动同步到 userData
                     state.activeNavigationGroupId = newValue.activeNavigationGroupId;
                     
+                    // 【性能优化】更新导航组缓存
+                    if (window.navigationModule && typeof window.navigationModule.updateCache === 'function') {
+                        window.navigationModule.updateCache();
+                    }
+                    
                     // 只重新渲染导航部分
                     navigationModule.render.all();
                 }

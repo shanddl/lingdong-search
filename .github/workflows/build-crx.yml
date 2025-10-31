@@ -1,207 +1,123 @@
-name: 构建 CRX 扩展包
+name: Build and Release Chrome Extension
 
 on:
   push:
-    # 监听main分支的代码变更
     branches:
       - main
-    # 监听tag推送（用于创建Release）
+      - master
     tags:
       - 'v*'
-    # 路径过滤（仅对分支推送生效，tag推送不受影响）
-    paths:
-      - 'js/**'
-      - 'manifest.json'
-      - 'package.json'
-  workflow_dispatch: # 允许手动触发
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # 需要写入权限来创建Release
     
     steps:
-      - name: 检出代码
+      - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: 设置 Node.js
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
-      - name: 安装依赖
+
+      - name: Install dependencies
         run: npm ci
-      
-      - name: 读取版本号
-        id: version
+
+      - name: Read version from manifest
+        id: manifest
         run: |
           VERSION=$(node -p "require('./manifest.json').version")
+          NAME=$(node -p "require('./manifest.json').name.replace(/\s+/g, '-').toLowerCase()")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "扩展版本: $VERSION"
-      
-      - name: 生成私钥（如果不存在）
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "📦 Extension: $NAME"
+          echo "📝 Version: $VERSION"
+
+      - name: Generate private key if not exists
+        id: keygen
         run: |
-          if [ ! -f "private-key.pem" ]; then
-            echo "🔑 生成私钥文件..."
-            node -e "
-              const NodeRSA = require('node-rsa');
-              const fs = require('fs');
-              const key = new NodeRSA({ b: 2048 });
-              const privateKey = key.exportKey('pkcs1-private-pem');
-              fs.writeFileSync('private-key.pem', privateKey);
-              console.log('✅ 私钥生成成功');
-            "
+          if [ ! -f private-key.pem ]; then
+            echo "🔑 Generating private key..."
+            openssl genrsa -out private-key.pem 2048
+            echo "key_created=true" >> $GITHUB_OUTPUT
           else
-            echo "✅ 私钥文件已存在"
+            echo "key_created=false" >> $GITHUB_OUTPUT
           fi
-      
-      - name: 构建 CRX 文件
+
+      - name: Build CRX file
+        id: build
         run: |
-          echo "🚀 开始构建 CRX 文件..."
-          npm run build || echo "⚠️ CRX 构建失败，将只提供 ZIP 版本"
-      
-      - name: 构建 ZIP 文件（始终生成）
-        run: |
-          echo "📦 开始构建 ZIP 文件..."
-          npm run package || node scripts/package-extension.js
-          echo "✅ ZIP 文件构建完成"
-      
-      - name: 创建固定名称的下载文件
-        run: |
-          # 查找并复制CRX文件为固定名称
-          CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -1)
+          node scripts/build-crx-github.js
+          CRX_FILE=$(ls -1 *.crx 2>/dev/null | head -n 1 || echo "")
+          ZIP_FILE=$(ls -1 *.zip 2>/dev/null | head -n 1 || echo "")
           if [ -n "$CRX_FILE" ]; then
-            cp "$CRX_FILE" "lingdong-search.crx"
-            echo "✅ 已创建固定名称: lingdong-search.crx (来源: $CRX_FILE)"
+            echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
+            echo "type=crx" >> $GITHUB_OUTPUT
+          elif [ -n "$ZIP_FILE" ]; then
+            echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
+            echo "type=zip" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ 未找到CRX文件，跳过"
+            echo "❌ Failed to build extension"
+            exit 1
           fi
-          
-          # 查找并复制ZIP文件为固定名称
-          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -1)
-          if [ -n "$ZIP_FILE" ]; then
-            cp "$ZIP_FILE" "lingdong-search.zip"
-            echo "✅ 已创建固定名称: lingdong-search.zip (来源: $ZIP_FILE)"
-          else
-            echo "⚠️ 未找到ZIP文件，跳过"
-          fi
-      
-      - name: 列出构建产物
-        run: |
-          echo "📦 查找构建产物："
-          ls -la *.crx 2>/dev/null || echo "未找到 .crx 文件"
-          ls -la *.zip 2>/dev/null || echo "未找到 .zip 文件"
-          echo "当前目录文件："
-          ls -la | head -20
-      
-      - name: 准备Release文件列表
-        id: release_files
-        run: |
-          # 创建临时文件列表
-          FILE_LIST=$(mktemp)
-          
-          # 检查固定名称的CRX文件
-          if [ -f "lingdong-search.crx" ]; then
-            echo "lingdong-search.crx" >> "$FILE_LIST"
-            echo "✅ 找到: lingdong-search.crx"
-          fi
-          
-          # 检查固定名称的ZIP文件
-          if [ -f "lingdong-search.zip" ]; then
-            echo "lingdong-search.zip" >> "$FILE_LIST"
-            echo "✅ 找到: lingdong-search.zip"
-          fi
-          
-          # 检查带版本号的文件（排除固定名称的，避免重复）
-          for crx in *.crx; do
-            if [ -f "$crx" ] && [ "$crx" != "lingdong-search.crx" ]; then
-              echo "$crx" >> "$FILE_LIST"
-              echo "✅ 找到: $crx"
-            fi
-          done
-          
-          for zip in *.zip; do
-            if [ -f "$zip" ] && [ "$zip" != "lingdong-search.zip" ]; then
-              echo "$zip" >> "$FILE_LIST"
-              echo "✅ 找到: $zip"
-            fi
-          done
-          
-          # 将文件列表内容作为multiline输出
-          if [ -s "$FILE_LIST" ]; then
-            echo "files<<EOF" >> $GITHUB_OUTPUT
-            cat "$FILE_LIST" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "📦 将上传的文件："
-            cat "$FILE_LIST"
-          else
-            echo "⚠️ 未找到任何文件可上传"
-          fi
-          
-          rm -f "$FILE_LIST"
-      
-      - name: 上传构建产物
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: extension-package
+          name: extension-${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}
           path: |
-            *.crx
+            ${{ steps.build.outputs.file }}
             *.zip
-          retention-days: 30
-      
-      - name: 检查是否应该创建 Release
-        id: check_release
-        run: |
-          # 如果推送了tag，或者手动触发，则创建Release
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "触发方式: 手动触发"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "触发方式: Tag推送 - ${{ github.ref }}"
-            # 从tag中提取版本号
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          else
-            # 检查本次提交是否修改了manifest.json
-            if git diff --name-only HEAD~1 HEAD | grep -q "manifest.json"; then
-              echo "should_create=true" >> $GITHUB_OUTPUT
-              echo "触发方式: manifest.json版本变更"
-            else
-              echo "should_create=false" >> $GITHUB_OUTPUT
-              echo "跳过Release创建（仅代码更新，无版本变更）"
-            fi
-          fi
-      
-      - name: 创建或更新 Release
-        if: steps.check_release.outputs.should_create == 'true' && steps.release_files.outputs.files != ''
+            *.crx
+          retention-days: 90
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ steps.release_files.outputs.files }}
-          tag_name: ${{ steps.check_release.outputs.tag_name || format('v{0}', steps.version.outputs.version) }}
-          name: Release v${{ steps.version.outputs.version }}
+          files: |
+            ${{ steps.build.outputs.file }}
+          name: Release v${{ steps.manifest.outputs.version }}
           body: |
-            ## 版本 v${{ steps.version.outputs.version }}
+            ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
-            ### 构建信息
-            - **构建时间**: ${{ github.run_started_at }}
-            - **提交**: ${{ github.sha }}
-            - **提交消息**: ${{ github.event.head_commit.message || github.event.pusher.name }}
+            ### 📦 下载
+            - [直接下载 ${{ steps.build.outputs.type | upper }}文件](./${{ steps.build.outputs.file }})
             
-            ### 下载说明
-            请下载对应的扩展包文件（.crx 或 .zip）并安装到 Chrome 浏览器中。
+            ### 📝 更新内容
+            - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
             
-            **安装方法**：
-            1. 下载 `.crx` 文件（如果生成成功）
-            2. 或者下载 `.zip` 文件并解压
-            3. 打开 Chrome，进入 `chrome://extensions/`
-            4. 启用"开发者模式"
-            5. 点击"加载已解压的扩展程序"，选择解压后的文件夹
+            ### 🔧 安装方式
+            1. 下载 `${{ steps.build.outputs.file }}` 文件
+            2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+            3. 启用"开发者模式"（右上角）
+            4. 将下载的文件拖拽到页面中完成安装
+            
+            ---
+            
+            **自动化构建**: 此版本由 GitHub Actions 自动构建生成
           draft: false
           prerelease: false
-          generate_release_notes: true
-          fail_on_unmatched_files: false  # 如果文件不存在也不失败
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## 📦 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Extension**: ${{ steps.manifest.outputs.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.manifest.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **File**: ${{ steps.build.outputs.file }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Type**: ${{ steps.build.outputs.type | upper }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.keygen.outputs.key_created }}" == "true" ]; then
+            echo "- **Note**: Private key was auto-generated for this build" >> $GITHUB_STEP_SUMMARY
+          fi
