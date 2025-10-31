@@ -35,3 +35,6 @@ npm-debug.log*
 tmp/
 temp/
 
+# AI参考文档（不提交到仓库）
+docs/
+
