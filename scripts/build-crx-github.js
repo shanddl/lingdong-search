@@ -30,7 +30,9 @@ const excludePatterns = [
   'scripts',
   'backup',
   'package.json',
-  'package-lock.json'
+  'package-lock.json',
+  'lingdong-search.zip',  // 排除固定文件名的ZIP（会在构建时重新生成）
+  'lingdong-search.crx'   // 排除固定文件名的CRX（会在构建时重新生成）
 ];
 
 function shouldExclude(filePath) {
