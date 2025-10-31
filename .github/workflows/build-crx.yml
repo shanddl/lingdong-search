@@ -54,7 +54,26 @@ jobs:
             *.zip
           retention-days: 30
       
+      - name: 检查是否应该创建 Release
+        id: check_release
+        run: |
+          # 如果推送了tag，或者手动触发，或者manifest.json有变化，则创建Release
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_create=true" >> $GITHUB_OUTPUT
+            echo "触发方式: 手动触发"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "should_create=true" >> $GITHUB_OUTPUT
+            echo "触发方式: Tag推送"
+          elif [[ "${{ github.event.head_commit.modified }}" == *manifest.json* ]] || [[ "${{ github.event.head_commit.added }}" == *manifest.json* ]]; then
+            echo "should_create=true" >> $GITHUB_OUTPUT
+            echo "触发方式: manifest.json变更"
+          else
+            echo "should_create=false" >> $GITHUB_OUTPUT
+            echo "跳过Release创建（无tag且manifest.json未变更）"
+          fi
+      
       - name: 创建或更新 Release
+        if: steps.check_release.outputs.should_create == 'true'
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -66,12 +85,19 @@ jobs:
             ## 版本 v${{ steps.version.outputs.version }}
             
             ### 构建信息
-            - **构建时间**: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+            - **构建时间**: ${{ github.run_started_at }}
             - **提交**: ${{ github.sha }}
-            - **提交消息**: ${{ github.event.head_commit.message }}
+            - **提交消息**: ${{ github.event.head_commit.message || github.event.pusher.name }}
             
-            ### 下载
+            ### 下载说明
             请下载对应的扩展包文件（.crx 或 .zip）并安装到 Chrome 浏览器中。
+            
+            **安装方法**：
+            1. 下载 `.crx` 文件（如果生成成功）
+            2. 或者下载 `.zip` 文件并解压
+            3. 打开 Chrome，进入 `chrome://extensions/`
+            4. 启用"开发者模式"
+            5. 点击"加载已解压的扩展程序"，选择解压后的文件夹
           draft: false
           prerelease: false
           generate_release_notes: true
