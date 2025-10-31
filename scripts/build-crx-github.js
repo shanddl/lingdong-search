@@ -137,17 +137,38 @@ async function createZip(outputFile) {
   });
 }
 
-async function buildCRX() {
+async function buildCRX(crxOutputFile, privateKeyPath) {
+  console.log('📦 尝试使用 crx3 打包 CRX 文件...');
+  try {
+    execSync(`npx -y crx3@1.1.15 . -p "${privateKeyPath}" -o "${crxOutputFile}"`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: { ...process.env, NODE_ENV: 'production' },
+      maxBuffer: 10 * 1024 * 1024
+    });
+    
+    if (fs.existsSync(crxOutputFile)) {
+      const stats = fs.statSync(crxOutputFile);
+      console.log(`✅ CRX 文件构建成功！`);
+      console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+      return crxOutputFile;
+    } else {
+      throw new Error('CRX文件未生成');
+    }
+  } catch (error) {
+    console.log(`⚠️ crx3 构建失败: ${error.message}`);
+    return null;
+  }
+}
+
+async function buildExtension() {
   console.log('🚀 开始构建 Chrome 扩展...');
   console.log(`📝 扩展名: ${manifest.name}`);
   console.log(`📝 版本: ${version}`);
   
-  // 直接使用ZIP打包（最可靠）
-  // ZIP文件可以作为Chrome扩展安装（开发者模式下）
-  console.log('📦 使用ZIP打包方式（兼容Chrome扩展安装）...');
-  const zipFile = path.join(__dirname, '..', `${extensionName}-v${version}.zip`);
-  
-  console.log(`📁 输出文件: ${zipFile}`);
+  const baseName = `${extensionName}-v${version}`;
+  const zipFile = path.join(__dirname, '..', `${baseName}.zip`);
+  const crxFile = path.join(__dirname, '..', `${baseName}.crx`);
   
   // 确保输出目录存在
   const outputDir = path.dirname(zipFile);
@@ -155,21 +176,45 @@ async function buildCRX() {
     fs.mkdirSync(outputDir, { recursive: true });
   }
   
-  await createZip(zipFile);
-  console.log(`✅ ZIP文件创建成功，可以作为扩展包使用`);
-  
-  // 验证文件是否存在
-  if (!fs.existsSync(zipFile)) {
-    throw new Error('ZIP文件创建失败，文件不存在');
+  // 生成私钥（如果不存在）
+  if (!fs.existsSync(privateKeyPath)) {
+    console.log('🔑 生成私钥文件...');
+    execSync(`openssl genrsa -out "${privateKeyPath}" 2048`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..')
+    });
   }
   
-  return zipFile;
+  const files = [];
+  
+  // 1. 创建 ZIP 文件（总是创建）
+  console.log('📦 创建 ZIP 文件...');
+  await createZip(zipFile);
+  if (fs.existsSync(zipFile)) {
+    files.push(zipFile);
+    console.log(`✅ ZIP文件创建成功: ${zipFile}`);
+  } else {
+    throw new Error('ZIP文件创建失败');
+  }
+  
+  // 2. 尝试创建 CRX 文件
+  const crxResult = await buildCRX(crxFile, privateKeyPath);
+  if (crxResult && fs.existsSync(crxFile)) {
+    files.push(crxFile);
+  } else {
+    console.log('⚠️ CRX文件生成失败，仅提供ZIP文件');
+  }
+  
+  console.log(`✨ 构建完成，共生成 ${files.length} 个文件`);
+  return files;
 }
 
 // 执行构建
-buildCRX()
-  .then(file => {
-    console.log(`✨ 构建完成: ${file}`);
+buildExtension()
+  .then(files => {
+    files.forEach(file => {
+      console.log(`📦 文件: ${file}`);
+    });
     process.exit(0);
   })
   .catch(err => {

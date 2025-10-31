@@ -46,27 +46,41 @@ jobs:
           echo "🚀 Starting build process..."
           set -e
           
-          # 运行构建脚本
+          # 运行构建脚本（会生成ZIP和CRX）
           node scripts/build-crx-github.js
           
           echo "📋 Checking for build artifacts..."
-          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -n 1 || echo "")
-          CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -n 1 || echo "")
           
-          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+          # 查找统一命名的文件
+          BASE_NAME="${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}"
+          ZIP_FILE="${BASE_NAME}.zip"
+          CRX_FILE="${BASE_NAME}.crx"
+          
+          FILES_FOUND=""
+          
+          if [ -f "$ZIP_FILE" ]; then
             echo "✅ Found ZIP file: $ZIP_FILE"
-            echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
-            echo "type=zip" >> $GITHUB_OUTPUT
-          elif [ -n "$CRX_FILE" ] && [ -f "$CRX_FILE" ]; then
-            echo "✅ Found CRX file: $CRX_FILE"
-            echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
-            echo "type=crx" >> $GITHUB_OUTPUT
+            echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $ZIP_FILE"
           else
-            echo "❌ No build artifacts found!"
-            echo "📂 Listing current directory:"
-            ls -la
+            echo "❌ ZIP file not found: $ZIP_FILE"
             exit 1
           fi
+          
+          if [ -f "$CRX_FILE" ]; then
+            echo "✅ Found CRX file: $CRX_FILE"
+            echo "crx_file=$CRX_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $CRX_FILE"
+          else
+            echo "⚠️ CRX file not found: $CRX_FILE (only ZIP will be available)"
+          fi
+          
+          # 输出所有文件列表（用换行分隔）
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES_FOUND" | tr ' ' '\n' | grep -v '^$' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "📦 Build artifacts:${FILES_FOUND}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -83,8 +97,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ steps.build.outputs.file }}
-          name: Release v${{ steps.manifest.outputs.version }}
+            ${{ steps.build.outputs.zip_file }}
+            ${{ steps.build.outputs.crx_file }}
           body: |
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
