@@ -145,6 +145,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Extension**: ${{ steps.manifest.outputs.name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.manifest.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **File**: ${{ steps.build.outputs.file }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Type**: $(echo "${{ steps.build.outputs.type }}" | tr '[:lower:]' '[:upper:]')" >> $GITHUB_STEP_SUMMARY
+          echo "- **ZIP File**: ${{ steps.build.outputs.zip_file }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.build.outputs.crx_file }}" ]; then
+            echo "- **CRX File**: ${{ steps.build.outputs.crx_file }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **CRX File**: Not generated" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
