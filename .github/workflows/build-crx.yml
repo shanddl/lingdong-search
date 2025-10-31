@@ -114,16 +114,31 @@ jobs:
             ls -lh *.zip *.crx 2>/dev/null || true
           fi
 
+      - name: Check if CRX file exists
+        id: check_crx
+        run: |
+          if [ -f *.crx ]; then
+            CRX_FILE=$(ls *.crx | head -n 1)
+            echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ CRX 文件存在: $CRX_FILE"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ 警告: 未找到 CRX 文件"
+            ls -la *.crx *.zip 2>/dev/null || true
+          fi
+
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && steps.check_crx.outputs.exists == 'true'
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            *.crx
+            ${{ steps.check_crx.outputs.file }}
           name: Release v${{ steps.get_version.outputs.version }}
           tag_name: v${{ steps.get_version.outputs.version }}
           generate_release_notes: true
           make_latest: true
+          fail_on_unmatched_files: false
           body: |
             ## 版本 v${{ steps.get_version.outputs.version }}
             
