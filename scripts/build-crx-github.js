@@ -110,58 +110,18 @@ async function buildCRX() {
     throw new Error(`私钥文件不存在: ${privateKeyPath}`);
   }
 
-  // 尝试方法1: 使用crx3 (推荐)
-  try {
-    console.log('📦 尝试使用 crx3 打包...');
-    execSync(`npx -y crx3@1.1.15 . -p "${privateKeyPath}" -o "${outputFile}"`, {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' },
-      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
-    });
-    
-    if (fs.existsSync(outputFile)) {
-      const stats = fs.statSync(outputFile);
-      console.log(`✅ CRX 文件构建成功！`);
-      console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-      console.log(`📍 文件位置: ${outputFile}`);
-      return outputFile;
-    } else {
-      throw new Error('CRX文件未生成');
-    }
-  } catch (error) {
-    console.log(`⚠️ crx3 构建失败: ${error.message}`);
-    console.log('📦 尝试其他方法...');
-  }
-
-  // 尝试方法2: 使用crx
-  try {
-    console.log('📦 尝试使用 crx 打包...');
-    execSync(`npx -y crx@5.0.1 pack . -o "${outputFile}" -p "${privateKeyPath}"`, {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' },
-      maxBuffer: 10 * 1024 * 1024
-    });
-    
-    if (fs.existsSync(outputFile)) {
-      const stats = fs.statSync(outputFile);
-      console.log(`✅ CRX 文件构建成功！`);
-      console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-      console.log(`📍 文件位置: ${outputFile}`);
-      return outputFile;
-    } else {
-      throw new Error('CRX文件未生成');
-    }
-  } catch (error) {
-    console.log(`⚠️ crx 构建失败: ${error.message}`);
-    console.log('📦 回退到 ZIP 打包方式...');
-  }
-
-  // Fallback: 创建ZIP文件
+  // 尝试方法1: 直接使用ZIP打包（最可靠）
+  // 在GitHub Actions中，ZIP文件也可以作为Chrome扩展安装
+  console.log('📦 使用ZIP打包方式（兼容Chrome扩展安装）...');
   const zipFile = outputFile.replace('.crx', '.zip');
-  await createZip(zipFile);
-  return zipFile;
+  try {
+    await createZip(zipFile);
+    console.log(`✅ ZIP文件创建成功，可以作为扩展包使用`);
+    return zipFile;
+  } catch (error) {
+    console.error(`❌ ZIP打包失败: ${error.message}`);
+    throw error;
+  }
 }
 
 // 执行构建

@@ -51,37 +51,31 @@ jobs:
             echo "key_created=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build CRX file
+      - name: Build extension package
         id: build
         run: |
           echo "🚀 Starting build process..."
+          set -e
           
-          # 运行构建脚本（即使失败也继续检查输出）
-          node scripts/build-crx-github.js || BUILD_SCRIPT_EXIT_CODE=$?
+          # 运行构建脚本
+          node scripts/build-crx-github.js
           
           echo "📋 Checking for build artifacts..."
-          CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -n 1 || echo "")
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" -type f 2>/dev/null | head -n 1 || echo "")
+          CRX_FILE=$(find . -maxdepth 1 -name "*.crx" -type f 2>/dev/null | head -n 1 || echo "")
           
-          if [ -n "$CRX_FILE" ] && [ -f "$CRX_FILE" ]; then
-            echo "✅ Found CRX file: $CRX_FILE"
-            echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
-            echo "type=crx" >> $GITHUB_OUTPUT
-            exit 0
-          elif [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
             echo "✅ Found ZIP file: $ZIP_FILE"
             echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
             echo "type=zip" >> $GITHUB_OUTPUT
-            exit 0
+          elif [ -n "$CRX_FILE" ] && [ -f "$CRX_FILE" ]; then
+            echo "✅ Found CRX file: $CRX_FILE"
+            echo "file=$CRX_FILE" >> $GITHUB_OUTPUT
+            echo "type=crx" >> $GITHUB_OUTPUT
           else
             echo "❌ No build artifacts found!"
             echo "📂 Listing current directory:"
             ls -la
-            echo "📂 Listing scripts directory:"
-            ls -la scripts/ || true
-            if [ -n "$BUILD_SCRIPT_EXIT_CODE" ]; then
-              echo "⚠️ Build script exited with code: $BUILD_SCRIPT_EXIT_CODE"
-            fi
             exit 1
           fi
 
