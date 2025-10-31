@@ -2,17 +2,23 @@
 
 ## 🔗 直接下载（直链）
 
-### 最新版本 v1.0.0
+### 🌟 最新版本（推荐）
 
-**CRX 文件直接下载链接：**
+**始终指向最新版本的固定链接（推荐使用）：**
 ```
-https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx
+https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
 ```
 
 **复制链接：**
 ```bash
-https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx
+https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
 ```
+
+> 💡 **提示**：此链接会自动重定向到最新版本，无需手动更新版本号。无论何时使用此链接，都会下载到最新的 CRX 文件。
+
+### 版本特定链接
+
+如果需要的特定版本，请访问 [Releases 页面](https://github.com/shanddl/lingdong-search/releases) 查看所有版本及其下载链接。
 
 ### 📋 安装步骤
 
@@ -46,18 +52,20 @@ https://github.com/shanddl/lingdong-search/actions
 
 ## 💡 使用下载工具
 
-**使用 wget：**
+**使用 wget（推荐 - 最新版本）：**
 ```bash
-wget https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx
+wget https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
 ```
 
-**使用 curl：**
+**使用 curl（推荐 - 最新版本）：**
 ```bash
-curl -L -o lingdong-search-v1.0.crx https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx
+curl -L -o lingdong-search.crx https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx
 ```
 
-**使用 PowerShell：**
+**使用 PowerShell（推荐 - 最新版本）：**
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/shanddl/lingdong-search/releases/download/v1.0.0/lingdong-search-v1.0.crx" -OutFile "lingdong-search-v1.0.crx"
+Invoke-WebRequest -Uri "https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx" -OutFile "lingdong-search.crx"
 ```
+
+> 💡 **提示**：以上命令都会自动下载最新版本，无需修改版本号。
 
