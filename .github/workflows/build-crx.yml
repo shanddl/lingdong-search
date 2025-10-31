@@ -54,14 +54,26 @@ jobs:
             *.zip
           retention-days: 30
       
-      - name: 创建 Release（可选）
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 创建或更新 Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             *.crx
             *.zip
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          body: |
+            ## 版本 v${{ steps.version.outputs.version }}
+            
+            ### 构建信息
+            - **构建时间**: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+            - **提交**: ${{ github.sha }}
+            - **提交消息**: ${{ github.event.head_commit.message }}
+            
+            ### 下载
+            请下载对应的扩展包文件（.crx 或 .zip）并安装到 Chrome 浏览器中。
           draft: false
           prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
