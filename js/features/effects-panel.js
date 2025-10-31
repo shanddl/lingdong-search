@@ -613,6 +613,34 @@ class EffectsPanel {
                     this.markHeavyContent();
                 });
                 break;
+            case 'about':
+                // 更新版本号
+                this.updateVersionInfo();
+                break;
+        }
+    }
+    
+    /**
+     * 更新"关于"部分的版本信息
+     */
+    async updateVersionInfo() {
+        try {
+            const versionElement = document.getElementById('extension-version');
+            if (!versionElement) return;
+            
+            // 读取 manifest.json 获取版本号
+            const manifest = chrome.runtime.getManifest();
+            if (manifest && manifest.version) {
+                versionElement.textContent = `版本 v${manifest.version}`;
+            } else {
+                versionElement.textContent = '版本 v1.0';
+            }
+        } catch (error) {
+            console.warn('[Effects Panel] Failed to update version info:', error);
+            const versionElement = document.getElementById('extension-version');
+            if (versionElement) {
+                versionElement.textContent = '版本 v1.0';
+            }
         }
     }
 
