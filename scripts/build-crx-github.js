@@ -43,27 +43,39 @@ function shouldExclude(filePath) {
 }
 
 function getAllFiles(dir, fileList = []) {
-  const files = fs.readdirSync(dir);
-  
-  files.forEach(file => {
-    const filePath = path.join(dir, file);
-    const relativePath = path.relative(path.join(__dirname, '..'), filePath);
+  try {
+    const files = fs.readdirSync(dir);
     
-    if (shouldExclude(relativePath)) {
-      return;
-    }
-    
-    const stat = fs.statSync(filePath);
-    
-    if (stat.isDirectory()) {
-      getAllFiles(filePath, fileList);
-    } else {
-      fileList.push({
-        path: filePath,
-        relative: relativePath.replace(/\\/g, '/') // 统一使用正斜杠
-      });
-    }
-  });
+    files.forEach(file => {
+      try {
+        const filePath = path.join(dir, file);
+        const relativePath = path.relative(path.join(__dirname, '..'), filePath);
+        
+        // 规范化路径，统一使用正斜杠
+        const normalizedPath = relativePath.replace(/\\/g, '/');
+        
+        if (shouldExclude(normalizedPath)) {
+          return;
+        }
+        
+        const stat = fs.statSync(filePath);
+        
+        if (stat.isDirectory()) {
+          getAllFiles(filePath, fileList);
+        } else {
+          fileList.push({
+            path: filePath,
+            relative: normalizedPath
+          });
+        }
+      } catch (err) {
+        // 忽略单个文件的错误，继续处理其他文件
+        console.warn(`警告: 无法处理文件 ${file}: ${err.message}`);
+      }
+    });
+  } catch (err) {
+    console.error(`错误: 无法读取目录 ${dir}: ${err.message}`);
+  }
   
   return fileList;
 }
@@ -75,23 +87,50 @@ async function createZip(outputFile) {
       zlib: { level: 9 }
     });
 
+    let hasError = false;
+
     output.on('close', () => {
-      console.log(`✅ ZIP文件创建成功: ${outputFile}`);
-      console.log(`📦 文件大小: ${(archive.pointer() / 1024 / 1024).toFixed(2)} MB`);
-      resolve();
+      if (!hasError) {
+        console.log(`✅ ZIP文件创建成功: ${outputFile}`);
+        console.log(`📦 文件大小: ${(archive.pointer() / 1024 / 1024).toFixed(2)} MB`);
+        resolve();
+      }
+    });
+
+    output.on('error', (err) => {
+      hasError = true;
+      reject(new Error(`输出流错误: ${err.message}`));
     });
 
     archive.on('error', (err) => {
-      reject(err);
+      hasError = true;
+      reject(new Error(`压缩错误: ${err.message}`));
     });
 
     archive.pipe(output);
 
     const rootDir = path.join(__dirname, '..');
+    console.log(`📂 扫描目录: ${rootDir}`);
     const files = getAllFiles(rootDir);
+    
+    console.log(`📋 找到 ${files.length} 个文件需要打包`);
+    
+    if (files.length === 0) {
+      hasError = true;
+      reject(new Error('没有找到需要打包的文件'));
+      return;
+    }
 
     files.forEach(file => {
-      archive.file(file.path, { name: file.relative });
+      try {
+        if (fs.existsSync(file.path)) {
+          archive.file(file.path, { name: file.relative });
+        } else {
+          console.warn(`警告: 文件不存在，跳过: ${file.path}`);
+        }
+      } catch (err) {
+        console.warn(`警告: 无法添加文件 ${file.relative}: ${err.message}`);
+      }
     });
 
     archive.finalize();
@@ -102,15 +141,28 @@ async function buildCRX() {
   console.log('🚀 开始构建 Chrome 扩展...');
   console.log(`📝 扩展名: ${manifest.name}`);
   console.log(`📝 版本: ${version}`);
-  console.log(`📁 输出文件: ${outputFile}`);
   
   // 直接使用ZIP打包（最可靠）
   // ZIP文件可以作为Chrome扩展安装（开发者模式下）
   console.log('📦 使用ZIP打包方式（兼容Chrome扩展安装）...');
-  const zipFile = outputFile.replace('.crx', '.zip');
+  const zipFile = path.join(__dirname, '..', `${extensionName}-v${version}.zip`);
+  
+  console.log(`📁 输出文件: ${zipFile}`);
+  
+  // 确保输出目录存在
+  const outputDir = path.dirname(zipFile);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
   
   await createZip(zipFile);
   console.log(`✅ ZIP文件创建成功，可以作为扩展包使用`);
+  
+  // 验证文件是否存在
+  if (!fs.existsSync(zipFile)) {
+    throw new Error('ZIP文件创建失败，文件不存在');
+  }
+  
   return zipFile;
 }
 
