@@ -103,6 +103,12 @@ async function buildCRX() {
   console.log(`📝 扩展名: ${manifest.name}`);
   console.log(`📝 版本: ${version}`);
   console.log(`📁 输出文件: ${outputFile}`);
+  console.log(`🔑 私钥路径: ${privateKeyPath}`);
+  
+  // 确保私钥存在
+  if (!fs.existsSync(privateKeyPath)) {
+    throw new Error(`私钥文件不存在: ${privateKeyPath}`);
+  }
 
   // 尝试方法1: 使用crx3 (推荐)
   try {
@@ -110,7 +116,8 @@ async function buildCRX() {
     execSync(`npx -y crx3@1.1.15 . -p "${privateKeyPath}" -o "${outputFile}"`, {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' }
+      env: { ...process.env, NODE_ENV: 'production' },
+      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
     });
     
     if (fs.existsSync(outputFile)) {
@@ -119,9 +126,12 @@ async function buildCRX() {
       console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
       console.log(`📍 文件位置: ${outputFile}`);
       return outputFile;
+    } else {
+      throw new Error('CRX文件未生成');
     }
   } catch (error) {
     console.log(`⚠️ crx3 构建失败: ${error.message}`);
+    console.log('📦 尝试其他方法...');
   }
 
   // 尝试方法2: 使用crx
@@ -130,7 +140,8 @@ async function buildCRX() {
     execSync(`npx -y crx@5.0.1 pack . -o "${outputFile}" -p "${privateKeyPath}"`, {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..'),
-      env: { ...process.env, NODE_ENV: 'production' }
+      env: { ...process.env, NODE_ENV: 'production' },
+      maxBuffer: 10 * 1024 * 1024
     });
     
     if (fs.existsSync(outputFile)) {
@@ -139,13 +150,15 @@ async function buildCRX() {
       console.log(`📦 文件大小: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
       console.log(`📍 文件位置: ${outputFile}`);
       return outputFile;
+    } else {
+      throw new Error('CRX文件未生成');
     }
   } catch (error) {
     console.log(`⚠️ crx 构建失败: ${error.message}`);
+    console.log('📦 回退到 ZIP 打包方式...');
   }
 
   // Fallback: 创建ZIP文件
-  console.log('📦 回退到 ZIP 打包方式...');
   const zipFile = outputFile.replace('.crx', '.zip');
   await createZip(zipFile);
   return zipFile;
