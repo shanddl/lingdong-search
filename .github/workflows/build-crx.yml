@@ -2,10 +2,13 @@ name: 构建 CRX 扩展包
 
 on:
   push:
+    # 监听main分支的代码变更
     branches:
       - main
+    # 监听tag推送（用于创建Release）
     tags:
-      - 'v*'  # 推送以v开头的tag时触发
+      - 'v*'
+    # 路径过滤（仅对分支推送生效，tag推送不受影响）
     paths:
       - 'js/**'
       - 'manifest.json'
