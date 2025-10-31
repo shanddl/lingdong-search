@@ -103,16 +103,23 @@ jobs:
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
             ### 📦 下载
-            - [直接下载文件](./${{ steps.build.outputs.file }})
+            - [下载 ZIP 文件](./${{ steps.build.outputs.zip_file }})
+            ${{ steps.build.outputs.crx_file && format('- [下载 CRX 文件](./{0})', steps.build.outputs.crx_file) || '- CRX 文件（构建中或生成失败）' }}
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
             
             ### 🔧 安装方式
-            1. 下载 `${{ steps.build.outputs.file }}` 文件
-            2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
-            3. 启用"开发者模式"（右上角）
-            4. 将下载的文件拖拽到页面中完成安装
+            
+            **方式一：使用 ZIP 文件（推荐）**
+            1. 下载 `${{ steps.build.outputs.zip_file }}` 文件
+            2. 解压 ZIP 文件
+            3. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+            4. 启用"开发者模式"（右上角）
+            5. 点击"加载已解压的扩展程序"
+            6. 选择解压后的文件夹
+            
+            ${{ steps.build.outputs.crx_file && format('**方式二：使用 CRX 文件**\n1. 下载 `{0}` 文件\n2. 打开 Chrome 浏览器，访问 `chrome://extensions/`\n3. 启用"开发者模式"（右上角）\n4. 将下载的 CRX 文件拖拽到页面中完成安装', steps.build.outputs.crx_file) || '' }}
             
             ---
             
