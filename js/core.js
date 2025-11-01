@@ -326,27 +326,20 @@ export const core = {
             document.body.classList.add(`shape-${state.userData.navigationShape}`);
         }
         
-        // Apply saved navigation alignment and density settings on load
+        // 【优化】批量应用导航对齐和密度设置（减少重排）
         if (dom.navigationGrid) {
-            // Apply alignment
-            if (state.userData.navigationAlignment) {
-                switch(state.userData.navigationAlignment) {
-                    case 'left':
-                        dom.navigationGrid.style.marginLeft = '0';
-                        dom.navigationGrid.style.marginRight = 'auto';
-                        break;
-                    case 'center':
-                        dom.navigationGrid.style.marginLeft = 'auto';
-                        dom.navigationGrid.style.marginRight = 'auto';
-                        break;
-                    case 'right':
-                        dom.navigationGrid.style.marginLeft = 'auto';
-                        dom.navigationGrid.style.marginRight = '0';
-                        break;
-                }
+            const alignmentStyles = {
+                'left': { marginLeft: '0', marginRight: 'auto' },
+                'center': { marginLeft: 'auto', marginRight: 'auto' },
+                'right': { marginLeft: 'auto', marginRight: '0' }
+            };
+            
+            // 批量应用对齐样式
+            if (state.userData.navigationAlignment && alignmentStyles[state.userData.navigationAlignment]) {
+                Object.assign(dom.navigationGrid.style, alignmentStyles[state.userData.navigationAlignment]);
             }
             
-            // Apply density (min-width)
+            // 应用密度设置
             if (state.userData.navigationItemMinWidth) {
                 dom.navigationGrid.style.setProperty('--nav-item-min-width', `${state.userData.navigationItemMinWidth}px`);
             }
@@ -372,7 +365,7 @@ export const core = {
         if (body) {
             body.style.paddingTop = `${v}vh`;
         } else {
-            console.error('❌ applySearchboxPosition: body元素未找到');
+            log.error('applySearchboxPosition: body元素未找到');
         }
     },
     
@@ -387,7 +380,7 @@ export const core = {
         if (main) {
             main.style.maxWidth = `${v}px`;
         } else {
-            console.error('❌ applySearchboxWidth: main元素未找到');
+            log.error('applySearchboxWidth: main元素未找到');
         }
         
         if (navGrid) {

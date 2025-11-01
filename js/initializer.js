@@ -15,7 +15,6 @@ import { aiSettings } from './features/ai-settings.js';
 import { timeRuleHandlers } from './features/timeRuleHandlers.js';
 import { managementHandlers } from './features/managementHandlers.js';
 import { render } from './ui/render.js';
-import { modalManager } from './ui/modalManager.js';
 import { utils } from './utils.js';
 
 /**

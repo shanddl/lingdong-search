@@ -99,11 +99,10 @@ function init() {
         eventManager.add(document, 'keydown', handlers.globalKeydownHandler)
     );
 
-    // 壁纸库按钮点击事件
-    const wallpaperLibraryBtn = document.querySelector('.wallpaper-library-btn');
-    if (wallpaperLibraryBtn) {
+    // 壁纸库按钮点击事件（使用缓存的DOM元素）
+    if (dom.wallpaperLibraryBtn) {
         globalEventIds.push(
-            eventManager.add(wallpaperLibraryBtn, 'click', (e) => {
+            eventManager.add(dom.wallpaperLibraryBtn, 'click', (e) => {
                 e.preventDefault();
                 window.location.href = 'wallpaper.html';
             })
@@ -114,20 +113,27 @@ function init() {
         eventManager.add(document.body, 'click', (e) => {
         const target = e.target;
 
-        // Close context menus if clicking outside
-        if (!target.closest('#nav-context-menu')) navigationModule.utils.closeContextMenu();
-        if (!target.closest('#nav-tab-context-menu')) navigationModule.utils.closeTabContextMenu();
-        if (!target.closest('#main-context-menu') && dom.mainContextMenu) {
-             dom.mainContextMenu.classList.remove('visible');
-             dom.mainContextMenu.style.opacity = '0';
-             dom.mainContextMenu.style.visibility = 'hidden';
+        // 【修复】关闭右键菜单的逻辑：点击菜单外部时关闭，但点击菜单本身或其子元素时不关闭
+        // 注意：closest会向上查找，包括元素本身和所有祖先元素
+        const isNavContextMenu = target.closest('#nav-context-menu');
+        const isNavTabContextMenu = target.closest('#nav-tab-context-menu');
+        const isMainContextMenu = target.closest('#main-context-menu');
+        
+        // 如果点击不在导航项右键菜单内，则关闭
+        if (!isNavContextMenu) {
+            navigationModule.utils.closeContextMenu();
+        }
+        // 如果点击不在标签右键菜单内，则关闭
+        if (!isNavTabContextMenu) {
+            navigationModule.utils.closeTabContextMenu();
+        }
+        // 如果点击不在主右键菜单内，则关闭
+        if (!isMainContextMenu && dom.mainContextMenu) {
+            dom.mainContextMenu.classList.remove('visible');
+            dom.mainContextMenu.style.opacity = '0';
+            dom.mainContextMenu.style.visibility = 'hidden';
         }
         
-        // Close all context menus when clicking anywhere
-        if (!target.closest('.dropdown-menu')) {
-            utils.closeAllDropdowns();
-        }
-
         // [增强] 点击菜单外部关闭自定义选择器菜单（如时间/文件菜单）
         // 如果点击不在.is-dynamic-menu或其trigger上，则关闭所有.is-dynamic-menu
         const isDynamicMenu = target.closest('.is-dynamic-menu');
@@ -145,8 +151,33 @@ function init() {
             return;
         }
 
-        if (!target.closest('.header-container, .is-dynamic-menu, .modal-content, .dropdown-menu')) {
-            utils.closeAllDropdowns();
+        // 【修复】先检查是否有data-action，如果有则优先处理，避免被其他逻辑拦截
+        const actionTarget = target.closest('[data-action]');
+        if (actionTarget) {
+            const action = actionTarget.dataset.action;
+            // 对于搜索引擎菜单中的按钮，先处理点击事件，再处理菜单关闭
+            if (action === 'manage-engines' || action === 'open-settings') {
+                handleActionClick(e);
+                return;
+            }
+        }
+
+        // 【修复】统一的下拉菜单关闭逻辑：点击非菜单区域时关闭
+        // 注意：菜单内的按钮点击应该由handleActionClick处理，不要在这里提前关闭菜单
+        const isInDropdownMenu = target.closest('.dropdown-menu');
+        const isInHeaderContainer = target.closest('.header-container');
+        
+        // 只有当点击不在下拉菜单内、不在header容器内时，才关闭所有菜单
+        // 菜单内的按钮（有data-action）会由handleActionClick处理，不需要在这里关闭菜单
+        if (!isInDropdownMenu && 
+            !isInHeaderContainer &&
+            !isNavContextMenu && 
+            !isNavTabContextMenu && 
+            !isMainContextMenu) {
+            // 但排除动态菜单和模态框
+            if (!target.closest('.is-dynamic-menu, .modal-content')) {
+                utils.closeAllDropdowns();
+            }
         }
 
         const dynamicMenuTrigger = target.closest('[data-dynamic-menu]');
@@ -443,74 +474,85 @@ function init() {
         utils.engineStyle.applySpacing(engineSpacing);
     }
 
-    // Add shape button listeners in appearance settings
-    const shapeButtons = document.querySelectorAll('.shape-choice');
-    shapeButtons.forEach(button => {
-        button.addEventListener('click', (e) => {
+    // 【修复】使用事件委托处理形状按钮点击（安全的实现）
+    // 形状按钮可能在外观设置面板中，使用document.body作为委托容器更安全
+    // 但只处理点击.shape-choice元素的情况，避免影响其他元素
+    globalEventIds.push(
+        eventManager.delegate(document.body, 'click', '.shape-choice', (e) => {
             const shape = e.target.dataset.shape;
-            // 移除所有形状按钮的active和selected状态
-            shapeButtons.forEach(btn => btn.classList.remove('active', 'selected'));
-            // 为当前按钮添加active和selected状态
-            e.target.classList.add('active', 'selected');
+            if (!shape) return;
             
+            // 批量更新所有形状按钮状态（优化性能）
+            const allShapeButtons = document.querySelectorAll('.shape-choice');
+            allShapeButtons.forEach(btn => {
+                btn.classList.toggle('active', btn === e.target);
+                btn.classList.toggle('selected', btn === e.target);
+            });
+            
+            // 批量更新body类名（减少DOM操作）
             document.body.className = document.body.className.replace(/shape-\w+/g, '');
             if (shape !== 'square') {
                 document.body.classList.add(`shape-${shape}`);
             }
+            
             state.userData.navigationShape = shape;
             core.saveUserData(() => utils.showToast('导航形状已保存', 'success'));
-        });
-    });
+        })
+    );
     
-    // 应用保存的形状按钮状态
-    if (state.userData.navigationShape) {
-        shapeButtons.forEach(btn => {
-            btn.classList.remove('active', 'selected');
-            if (btn.dataset.shape === state.userData.navigationShape) {
-                btn.classList.add('active', 'selected');
+    // 应用保存的形状按钮状态（初始化时执行一次，延迟执行确保DOM已加载）
+    setTimeout(() => {
+        const allShapeButtons = document.querySelectorAll('.shape-choice');
+        if (allShapeButtons.length > 0) {
+            if (state.userData.navigationShape) {
+                const savedShapeBtn = Array.from(allShapeButtons).find(btn => btn.dataset.shape === state.userData.navigationShape);
+                if (savedShapeBtn) {
+                    allShapeButtons.forEach(btn => {
+                        btn.classList.remove('active', 'selected');
+                    });
+                    savedShapeBtn.classList.add('active', 'selected');
+                }
+            } else {
+                // 默认选中方形
+                const squareBtn = Array.from(allShapeButtons).find(btn => btn.dataset.shape === 'square');
+                if (squareBtn) squareBtn.classList.add('active', 'selected');
             }
-        });
-    } else {
-        // 默认选中方形
-        const squareBtn = document.querySelector('.shape-choice[data-shape="square"]');
-        if (squareBtn) squareBtn.classList.add('active', 'selected');
-    }
+        }
+    }, 100);
 
-    // [新增] 导航对齐方式按钮监听器
+    // 【优化】导航对齐方式按钮监听器（使用eventManager统一管理）
     if (dom.navAlignGroup) {
-        dom.navAlignGroup.addEventListener('click', (e) => {
-            const target = e.target.closest('[data-action="set-nav-alignment"]');
-            if (target) {
-                const align = target.dataset.align;
-                // 移除所有按钮的active和selected状态
-                dom.navAlignGroup.querySelectorAll('[data-action="set-nav-alignment"]').forEach(btn => {
-                    btn.classList.remove('active', 'selected');
+        globalEventIds.push(
+            eventManager.delegate(dom.navAlignGroup, 'click', '[data-action="set-nav-alignment"]', (e) => {
+                const align = e.target.dataset.align;
+                if (!align) return;
+                
+                // 批量更新按钮状态（优化性能）
+                const allAlignButtons = dom.navAlignGroup.querySelectorAll('[data-action="set-nav-alignment"]');
+                allAlignButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn === e.target);
+                    btn.classList.toggle('selected', btn === e.target);
                 });
-                // 为当前按钮添加active和selected状态
-                target.classList.add('active', 'selected');
-                // 应用对齐方式到导航网格
+                
+                // 批量更新导航网格样式（减少重排）
                 if (dom.navigationGrid) {
-                    // [修改] 使用不同的对齐方式实现精确对齐
-                    switch(align) {
-                        case 'left':
-                            dom.navigationGrid.style.marginLeft = '0';
-                            dom.navigationGrid.style.marginRight = 'auto';
-                            break;
-                        case 'center':
-                            dom.navigationGrid.style.marginLeft = 'auto';
-                            dom.navigationGrid.style.marginRight = 'auto';
-                            break;
-                        case 'right':
-                            dom.navigationGrid.style.marginLeft = 'auto';
-                            dom.navigationGrid.style.marginRight = '0';
-                            break;
+                    const alignmentStyles = {
+                        'left': { marginLeft: '0', marginRight: 'auto' },
+                        'center': { marginLeft: 'auto', marginRight: 'auto' },
+                        'right': { marginLeft: 'auto', marginRight: '0' }
+                    };
+                    
+                    const styles = alignmentStyles[align];
+                    if (styles) {
+                        Object.assign(dom.navigationGrid.style, styles);
                     }
                 }
+                
                 // 保存用户选择
                 state.userData.navigationAlignment = align;
                 core.saveUserData(() => utils.showToast('导航对齐已保存', 'success'));
-            }
-        });
+            })
+        );
     }
 
     // 添加拖拽事件监听器

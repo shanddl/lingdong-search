@@ -79,7 +79,7 @@ export const render = {
                 // 创建图标
                 if (item.favicon) {
                     const safeIconUrl = sanitizer.sanitizeIconUrl(item.favicon);
-                    const img = utils.dom.createIcon(STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, safeIconUrl);
+                    const img = utils.dom.createIcon(STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, safeIconUrl, '', { sanitize: false });
                     leftDiv.appendChild(img);
                 } else {
                     const iconSpan = utils.dom.createStyledElement('span', STATIC_CONFIG.STYLES.ICON_STYLES.SMALL_ICON, {}, '🔖');
@@ -359,15 +359,42 @@ export const render = {
             logger.debug('Engine settings found:', state.userData.engineSettings);
             if (state.userData.engineSettings.size) {
                 utils.engineStyle.applySize(state.userData.engineSettings.size);
+                // 【修复】同步更新滑块的值和显示
+                if (dom.engineSizeSlider) {
+                    dom.engineSizeSlider.value = state.userData.engineSettings.size;
+                }
+                if (dom.engineSizeValue) {
+                    dom.engineSizeValue.textContent = `${state.userData.engineSettings.size}px`;
+                }
             }
             if (state.userData.engineSettings.spacing) {
                 utils.engineStyle.applySpacing(state.userData.engineSettings.spacing);
+                // 【修复】同步更新滑块的值和显示
+                if (dom.engineSpacingSlider) {
+                    dom.engineSpacingSlider.value = state.userData.engineSettings.spacing;
+                }
+                if (dom.engineSpacingValue) {
+                    dom.engineSpacingValue.textContent = `${state.userData.engineSettings.spacing}px`;
+                }
             }
         } else {
             // 使用默认设置
             logger.debug('Applying default engine settings in render function');
             utils.engineStyle.applySize(16);
             utils.engineStyle.applySpacing(8);
+            // 【修复】同步更新滑块的值和显示
+            if (dom.engineSizeSlider) {
+                dom.engineSizeSlider.value = 16;
+            }
+            if (dom.engineSizeValue) {
+                dom.engineSizeValue.textContent = '16px';
+            }
+            if (dom.engineSpacingSlider) {
+                dom.engineSpacingSlider.value = 8;
+            }
+            if (dom.engineSpacingValue) {
+                dom.engineSpacingValue.textContent = '8px';
+            }
         }
     },
     scopeMenu: () => {

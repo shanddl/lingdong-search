@@ -1,9 +1,4 @@
-import { cacheModalElements, dom } from '../dom.js';
-import { state } from '../state.js';
-import { core } from '../core.js';
-import { utils } from '../utils.js';
-import { navigationModule } from '../features/navigation.js';
-import { logger } from '../logger.js';
+import { cacheModalElements } from '../dom.js';
 
 // =================================================================
 // 模态框管理器

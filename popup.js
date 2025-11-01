@@ -1,5 +1,6 @@
 import { logger } from './js/logger.js';
 import { STATIC_CONFIG } from './js/constants.js';
+import { utils } from './js/utils.js';
 
 (() => {
     'use strict';
@@ -44,8 +45,7 @@ import { STATIC_CONFIG } from './js/constants.js';
         } catch (error) {
             
             showStatus('无法获取当前页面信息', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
+            utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
         }
 
         // 2. 从 chrome.storage.local 获取用户数据以填充分类列表
@@ -96,8 +96,9 @@ import { STATIC_CONFIG } from './js/constants.js';
     async function handleFormSubmit(event) {
         event.preventDefault();
         logger.debug('Form submit event triggered');
-        dom.saveButton.disabled = true;
-        dom.saveButton.textContent = '保存中...';
+        
+        // 【优化】使用统一按钮状态管理
+        utils.form.setButtonLoading(dom.saveButton, true);
 
         const title = dom.titleInput.value.trim();
         const url = dom.urlInput.value.trim();
@@ -106,32 +107,39 @@ import { STATIC_CONFIG } from './js/constants.js';
 
         logger.debug('Form data:', { title, url, groupId, newGroupName });
 
-        // 验证输入
-        if (!title) {
-            showStatus('请输入网站标题', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
+        // 【优化】使用统一表单验证工具
+        // 【修复】在customValidator中直接读取dom.groupSelect.value，避免闭包变量过期问题
+        const validation = utils.validator.validateForm([
+            { input: dom.titleInput, name: '网站标题', required: true },
+            { input: dom.urlInput, name: '网站地址', required: true, type: 'url' },
+            { input: dom.groupSelect, name: '分类', required: true },
+            { 
+                input: dom.newGroupInput, 
+                name: '新分类名称', 
+                required: false, // 使用 customValidator 处理条件验证
+                customValidator: (val) => {
+                    // 【修复】直接从dom元素获取最新值，避免闭包变量过期
+                    const currentGroupId = dom.groupSelect.value;
+                    if (currentGroupId === NEW_GROUP_VALUE && !val) {
+                        return { valid: false, message: '请输入新分类的名称' };
+                    }
+                    return { valid: true };
+                }
+            }
+        ]);
+
+        if (!validation.valid) {
+            const firstError = validation.errors[0];
+            showStatus(firstError.message, true);
+            utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
             return;
         }
 
-        if (!url) {
-            showStatus('请输入网站地址', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
-            return;
-        }
-
+        // 【修复】验证已经检查了 groupSelect 的 required，这里的检查是冗余的
+        // 但保留作为额外安全检查，因为 customValidator 的条件验证可能不够严格
         if (!groupId || groupId === '') {
             showStatus('请选择或创建一个分类', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
-            return;
-        }
-
-        if (groupId === NEW_GROUP_VALUE && !newGroupName) {
-            showStatus('请输入新分类的名称', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
+            utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
             return;
         }
 
@@ -204,14 +212,12 @@ import { STATIC_CONFIG } from './js/constants.js';
             } catch (error) {
                 logger.error('Storage error:', error);
                 showStatus('保存失败，请重试', true);
-                dom.saveButton.disabled = false;
-                dom.saveButton.textContent = '保存';
+                utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
             }
         } catch (error) {
             logger.error('Error in save process:', error);
             showStatus('保存失败，请重试', true);
-            dom.saveButton.disabled = false;
-            dom.saveButton.textContent = '保存';
+            utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
         }
     }
 

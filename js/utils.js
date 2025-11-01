@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { render } from './ui/render.js';
 import { STATIC_CONFIG } from './constants.js';
 import { eventManager } from './eventManager.js';
+import { sanitizer } from './security.js';
 
 // =================================================================
 // 核心及工具函数
@@ -349,18 +350,38 @@ export const utils = {
         },
 
         /**
-         * 创建图标元素
+         * 创建图标元素（带错误处理和占位符支持）
          * @param {string} size - 图标大小
          * @param {string} src - 图标源
          * @param {string} alt - 替代文本
+         * @param {Object} options - 选项：{fallbackChar: string, sanitize: boolean}
          * @returns {HTMLElement} 图标元素
          */
-        createIcon: (size = STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, src = '', alt = '') => {
+        createIcon: (size = STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, src = '', alt = '', options = {}) => {
+            const { fallbackChar, sanitize = true } = options;
+            
+            // 如果需要清理图标URL，使用sanitizer
+            const safeSrc = (sanitize && src) ? sanitizer.sanitizeIconUrl(src) : src;
+            
             const icon = utils.dom.createStyledElement('img', 
                 `width: ${size}; height: ${size}; flex-shrink: 0;`,
-                { src, alt }
+                { src: safeSrc, alt, loading: 'lazy' }
             );
-            icon.addEventListener('error', function() { this.style.display = 'none'; });
+            
+            // 统一的错误处理逻辑
+            icon.addEventListener('error', function handleError() {
+                this.removeEventListener('error', handleError);
+                if (fallbackChar) {
+                    // 使用占位符图片
+                    const firstChar = fallbackChar.charAt(0).toUpperCase();
+                    const iconSize = size.replace(/\D/g, '') || '32';
+                    this.src = `https://placehold.co/${iconSize}x${iconSize}/f0f0f0/000000?text=${encodeURIComponent(firstChar)}`;
+                } else {
+                    // 隐藏图标
+                    this.style.display = 'none';
+                }
+            });
+            
             return icon;
         },
 
@@ -402,6 +423,290 @@ export const utils = {
             return utils.dom.createStyledElement('div', 
                 `display: flex; align-items: center; gap: ${gap};`
             );
+        },
+
+        /**
+         * 创建上下文菜单项
+         * @param {Object} item - 菜单项配置 {text: string, action: string, color?: string, type?: 'button'|'divider'}
+         * @returns {HTMLElement} 菜单项元素
+         */
+        createContextMenuItem: (item) => {
+            if (item.type === 'divider') {
+                const divider = document.createElement('div');
+                divider.className = 'context-menu-divider';
+                return divider;
+            }
+            
+            // 【修复】确保item有text属性，避免undefined
+            if (!item || !item.text) {
+                console.warn('createContextMenuItem: invalid item', item);
+                return document.createElement('div'); // 返回空元素
+            }
+            
+            const menuItem = document.createElement(item.elementType || 'button');
+            menuItem.className = 'dropdown-item';
+            if (item.action) menuItem.dataset.action = item.action;
+            menuItem.textContent = item.text || '';
+            if (item.color) menuItem.style.color = item.color;
+            if (!item.elementType) menuItem.style.cursor = 'pointer';
+            
+            return menuItem;
+        },
+
+        /**
+         * 批量创建上下文菜单
+         * @param {Array} items - 菜单项配置数组
+         * @param {DocumentFragment} fragment - 目标fragment（可选，不提供则创建新的）
+         * @returns {DocumentFragment} 包含菜单项的fragment
+         */
+        createContextMenuItems: (items, fragment = null) => {
+            const targetFragment = fragment || document.createDocumentFragment();
+            items.forEach(item => {
+                targetFragment.appendChild(utils.dom.createContextMenuItem(item));
+            });
+            return targetFragment;
+        },
+
+        /**
+         * 应用上下文菜单样式
+         * @param {HTMLElement} menu - 菜单元素
+         * @param {number} x - X坐标
+         * @param {number} y - Y坐标
+         * @param {Object} options - 选项：{opensUp: boolean, centerX: boolean}
+         */
+        applyContextMenuStyle: (menu, x, y, options = {}) => {
+            const { opensUp, centerX, rect } = options;
+            
+            // 【修复】确保菜单可测量尺寸
+            // 菜单内容已添加，但可能CSS设置了visibility: hidden，需要临时显示以测量
+            // 保存并临时设置样式以便测量
+            const originalPosition = menu.style.position;
+            const originalTop = menu.style.top;
+            const originalLeft = menu.style.left;
+            const originalVisibility = menu.style.visibility;
+            
+            // 临时移到屏幕外并设置为可见以测量尺寸（但不显示给用户）
+            menu.style.position = 'fixed';
+            menu.style.top = '-9999px';
+            menu.style.left = '-9999px';
+            menu.style.visibility = 'hidden'; // 保持hidden但允许布局计算
+            menu.style.display = 'block'; // 确保可以测量
+            menu.style.opacity = '0'; // 不可见但可测量
+            
+            // 强制浏览器重排以获取准确尺寸
+            void menu.offsetHeight;
+            
+            // 获取菜单尺寸（此时菜单已在DOM中且有内容）
+            const menuHeight = menu.offsetHeight || 0;
+            const menuWidth = menu.offsetWidth || 0;
+            
+            // 计算位置
+            let top = y;
+            let left = x;
+            
+            if (opensUp && rect && menuHeight > 0) {
+                top = rect.top - menuHeight - 8;
+            }
+            
+            if (centerX && rect && menuWidth > 0) {
+                left = rect.left + (rect.width / 2) - (menuWidth / 2);
+            }
+            
+            // 应用最终位置和样式（批量操作减少重排）
+            // 【修复】移除backgroundColor，避免覆盖CSS的backdrop-filter效果
+            // CSS中已有背景样式（带backdrop-filter），只需设置位置和可见性
+            Object.assign(menu.style, {
+                position: 'fixed', // 右键菜单使用fixed定位
+                top: `${top}px`,
+                left: `${left}px`,
+                visibility: 'visible',
+                opacity: '1',
+                display: '' // 使用CSS默认值
+                // 注意：不设置background/backgroundColor，使用CSS中的样式（带backdrop-filter）
+            });
+            
+            if (opensUp) {
+                menu.classList.add('opens-up');
+            }
+            menu.classList.add('visible');
+        }
+    },
+
+    // =================================================================
+    // 表单验证工具 - 统一验证逻辑，减少重复代码
+    // =================================================================
+    validator: {
+        /**
+         * 验证必填字段
+         * @param {string} value - 字段值
+         * @param {string} fieldName - 字段名称（用于错误消息）
+         * @returns {Object} {valid: boolean, message: string}
+         */
+        validateRequired: (value, fieldName = '字段') => {
+            const trimmed = typeof value === 'string' ? value.trim() : '';
+            if (!trimmed) {
+                return {
+                    valid: false,
+                    message: `请输入${fieldName}`
+                };
+            }
+            return { valid: true, message: '' };
+        },
+
+        /**
+         * 验证URL格式
+         * @param {string} url - URL字符串
+         * @returns {Object} {valid: boolean, message: string}
+         */
+        validateUrl: (url) => {
+            const trimmed = typeof url === 'string' ? url.trim() : '';
+            if (!trimmed) {
+                return {
+                    valid: false,
+                    message: '请输入网站地址'
+                };
+            }
+            
+            // 使用security.js中的验证逻辑
+            try {
+                const testUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+                if (!sanitizer.isValidUrl(testUrl)) {
+                    return {
+                        valid: false,
+                        message: '无效的网址格式'
+                    };
+                }
+            } catch (e) {
+                return {
+                    valid: false,
+                    message: '无效的网址格式'
+                };
+            }
+            
+            return { valid: true, message: '' };
+        },
+
+        /**
+         * 批量验证表单字段
+         * @param {Array} fields - 字段配置数组 [{input, name, required, type, customValidator}]
+         * @returns {Object} {valid: boolean, errors: Array}
+         */
+        validateForm: (fields) => {
+            const errors = [];
+            
+            fields.forEach(field => {
+                const { input, name, required = false, type = 'text', customValidator } = field;
+                
+                if (!input) return;
+                
+                // 【修复】正确处理select元素和其他输入元素的值
+                let value = input.value;
+                // select元素的值可能是空字符串，需要在验证中处理
+                if (typeof value === 'string') {
+                    value = value.trim();
+                }
+                
+                // 必填验证（包括select元素）
+                if (required) {
+                    // select元素的空值验证（value为空字符串或未选择）
+                    if (input.tagName === 'SELECT' && (value === '' || value === null)) {
+                        errors.push({ field: name, message: `请选择${name}` });
+                        return;
+                    }
+                    const result = utils.validator.validateRequired(value, name);
+                    if (!result.valid) {
+                        errors.push({ field: name, message: result.message });
+                        return;
+                    }
+                }
+                
+                // 类型验证
+                if (value && type === 'url') {
+                    const result = utils.validator.validateUrl(value);
+                    if (!result.valid) {
+                        errors.push({ field: name, message: result.message });
+                        return;
+                    }
+                }
+                
+                // 自定义验证（允许检查空值，用于条件验证）
+                if (customValidator) {
+                    const result = customValidator(value);
+                    if (!result || !result.valid) {
+                        errors.push({ 
+                            field: name, 
+                            message: result?.message || `${name}验证失败` 
+                        });
+                    }
+                }
+            });
+            
+            return {
+                valid: errors.length === 0,
+                errors: errors
+            };
+        }
+    },
+
+    // =================================================================
+    // 表单工具函数 - 统一表单操作
+    // =================================================================
+    form: {
+        /**
+         * 获取表单字段值（自动trim）
+         * @param {HTMLElement} input - 输入框元素
+         * @param {boolean} required - 是否必填
+         * @returns {string|null} 字段值或null（如果必填但为空）
+         */
+        getFieldValue: (input, required = false) => {
+            if (!input) return null;
+            const value = input.value?.trim() || '';
+            if (required && !value) return null;
+            return value || null;
+        },
+
+        /**
+         * 设置按钮加载状态
+         * @param {HTMLElement} button - 按钮元素
+         * @param {boolean} loading - 是否加载中
+         * @param {string} loadingText - 加载中文本
+         * @param {string} normalText - 正常文本
+         */
+        setButtonLoading: (button, loading, loadingText = '保存中...', normalText = '保存') => {
+            if (!button) return;
+            button.disabled = loading;
+            button.textContent = loading ? loadingText : normalText;
+        },
+
+        /**
+         * 重置表单
+         * @param {HTMLFormElement} form - 表单元素
+         * @param {Object} defaultValues - 默认值对象 {fieldId: value}
+         */
+        resetForm: (form, defaultValues = {}) => {
+            if (!form) return;
+            form.reset();
+            Object.entries(defaultValues).forEach(([id, value]) => {
+                const input = form.querySelector(`#${id}`);
+                if (input) input.value = value;
+            });
+        },
+
+        /**
+         * 带提示的保存操作
+         * @param {Function} saveFn - 保存函数，参数为callback(err)
+         * @param {string} successMsg - 成功消息
+         * @param {string} errorMsg - 错误消息
+         */
+        saveWithToast: (saveFn, successMsg = '保存成功', errorMsg = '保存失败') => {
+            if (typeof saveFn !== 'function') return;
+            saveFn((err) => {
+                if (err) {
+                    utils.showToast(errorMsg, 'error');
+                } else {
+                    utils.showToast(successMsg, 'success');
+                }
+            });
         }
     },
 
@@ -508,6 +813,35 @@ export const utils = {
             const wrapper = utils.dom.createStyledElement('div', '', { className: 'input-wrapper' });
             wrapper.appendChild(input);
             return wrapper;
+        },
+
+        /**
+         * 创建模态框头部
+         * @param {string} titleText - 标题文本
+         * @param {Function} onClose - 关闭回调函数
+         * @returns {Object} 包含header、title、closeBtn的对象
+         */
+        createModalHeader: (titleText, onClose) => {
+            const header = document.createElement('div');
+            header.className = 'modal-header';
+            
+            const title = document.createElement('h3');
+            title.className = 'modal-title';
+            title.textContent = titleText;
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'modal-close-btn';
+            closeBtn.textContent = '×';
+            closeBtn.setAttribute('data-action', 'close-modal');
+            
+            if (typeof onClose === 'function') {
+                closeBtn.addEventListener('click', onClose);
+            }
+            
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            
+            return { header, title, closeBtn };
         },
 
         /**

@@ -73,13 +73,19 @@ export const navigationModule = {
             document.documentElement.style.setProperty('--nav-grid-gap', `${gap}px`);
         },
         closeContextMenu: () => {
+            // 【修复】统一关闭逻辑，重置样式确保菜单完全隐藏
             if (dom.navContextMenu) {
                 dom.navContextMenu.classList.remove('visible');
+                dom.navContextMenu.style.opacity = '0';
+                dom.navContextMenu.style.visibility = 'hidden';
             }
         },
         closeTabContextMenu: () => {
+            // 【修复】统一关闭逻辑，重置样式确保菜单完全隐藏
             if (dom.navTabContextMenu) {
                 dom.navTabContextMenu.classList.remove('visible');
+                dom.navTabContextMenu.style.opacity = '0';
+                dom.navTabContextMenu.style.visibility = 'hidden';
             }
         },
         // [NEW] Complete rewrite of the edit modal
@@ -105,17 +111,16 @@ export const navigationModule = {
             modalContent.className = 'modal-content';
             modalContent.style.maxWidth = '420px';
             
-            // 创建头部
-            const header = document.createElement('div');
-            header.className = 'modal-header';
-            const title = document.createElement('h3');
-            title.className = 'modal-title';
-            title.textContent = '编辑网站';
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'modal-close-btn';
-            closeBtn.textContent = '×'; // 【安全性优化】使用textContent替代innerHTML
-            header.appendChild(title);
-            header.appendChild(closeBtn);
+            // 【优化】使用工具函数创建模态框头部
+            // 先定义关闭函数，然后传入工具函数
+            let currentIcon = item.icon;
+            // 【修复】确保modalOverlay存在且仍在DOM中才移除
+            const closeModal = () => {
+                if (modalOverlay && modalOverlay.parentNode) {
+                    document.body.removeChild(modalOverlay);
+                }
+            };
+            const { header, closeBtn } = utils.modal.createModalHeader('编辑网站', closeModal);
             
             // 创建表单
             const form = document.createElement('form');
@@ -198,18 +203,16 @@ export const navigationModule = {
             body.appendChild(previewGroup);
             body.appendChild(groupGroup);
             
-            // 创建底部按钮
+            // 【优化】使用工具函数创建按钮
             const footer = document.createElement('div');
             footer.className = 'modal-footer justify-end';
-            const cancelBtn = document.createElement('button');
-            cancelBtn.type = 'button';
-            cancelBtn.className = 'modal-btn modal-btn-secondary';
-            cancelBtn.id = `cancel-edit-nav-${item.id}`;
-            cancelBtn.textContent = '取消';
-            const submitBtn = document.createElement('button');
-            submitBtn.type = 'submit';
-            submitBtn.className = 'modal-btn modal-btn-primary';
-            submitBtn.textContent = '保存更改';
+            const cancelBtn = utils.modal.createButton('取消', 'modal-btn modal-btn-secondary', '', {
+                type: 'button',
+                id: `cancel-edit-nav-${item.id}`
+            });
+            const submitBtn = utils.modal.createButton('保存更改', 'modal-btn modal-btn-primary', '', {
+                type: 'submit'
+            });
             footer.appendChild(cancelBtn);
             footer.appendChild(submitBtn);
             
@@ -224,10 +227,7 @@ export const navigationModule = {
             document.body.appendChild(modalOverlay);
             logger.debug('模态框已添加到DOM');
 
-            // 使用已经创建的元素引用（避免重复查询）
-            let currentIcon = item.icon;
-            const closeModal = () => document.body.removeChild(modalOverlay);
-            closeBtn.addEventListener('click', closeModal);
+            // 【修复】closeBtn 已在 createModalHeader 中绑定关闭事件，无需重复绑定
             cancelBtn.addEventListener('click', closeModal);
             modalOverlay.addEventListener('click', (e) => {
                 if (e.target === modalOverlay) closeModal();
@@ -324,18 +324,29 @@ export const navigationModule = {
 
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
+                
+                // 【优化】使用统一验证工具
+                const validation = utils.validator.validateForm([
+                    { input: nameGroup.input, name: '网站名称', required: true },
+                    { input: urlGroup.input, name: '网站地址', required: true, type: 'url' }
+                ]);
+                
+                if (!validation.valid) {
+                    utils.showToast(validation.errors[0].message, 'error');
+                    return;
+                }
+                
                 const newTitle = nameGroup.input.value.trim();
                 const newUrl = urlGroup.input.value.trim();
                 const newGroupId = groupSelect.value;
-                if (newTitle && newUrl) {
-                    onSave({
-                        ...item,
-                        title: newTitle,
-                        url: newUrl,
-                        icon: currentIcon
-                    }, currentGroupId, newGroupId);
-                    closeModal();
-                }
+                
+                onSave({
+                    ...item,
+                    title: newTitle,
+                    url: newUrl,
+                    icon: currentIcon
+                }, currentGroupId, newGroupId);
+                closeModal();
             });
         }
     },
@@ -476,19 +487,23 @@ export const navigationModule = {
                 return;
             }
             
-            // 【性能优化】使用CSS过渡替代直接清空，减少视觉闪烁
-            // 先添加淡出效果（如果有旧内容）
+            // 【优化】使用CSS过渡替代直接清空，减少视觉闪烁
+            // 批量应用样式（减少重排）
             if (oldNavItems.length > 0) {
-                dom.navigationGrid.style.opacity = '0.3';
-                dom.navigationGrid.style.transition = 'opacity 0.1s ease-out';
+                Object.assign(dom.navigationGrid.style, {
+                    opacity: '0.3',
+                    transition: 'opacity 0.1s ease-out'
+                });
             }
             
             // 在下一个动画帧清空并重建，给CSS过渡时间
             requestAnimationFrame(() => {
                 dom.navigationGrid.innerHTML = '';
-                dom.navigationGrid.style.display = 'flex';
-                dom.navigationGrid.style.opacity = '0';
-                dom.navigationGrid.style.transition = 'opacity 0.2s ease-in';
+                Object.assign(dom.navigationGrid.style, {
+                    display: 'flex',
+                    opacity: '0',
+                    transition: 'opacity 0.2s ease-in'
+                });
 
                 const fragment = document.createDocumentFragment();
                 
@@ -504,22 +519,14 @@ export const navigationModule = {
                     const iconWrapper = document.createElement('div');
                     iconWrapper.className = 'nav-item-icon-wrapper';
                     
-                    const icon = document.createElement('img');
-                    const iconUrl = sanitizer.sanitizeIconUrl(item.icon);
+                    // 【优化】使用统一的图标创建工具函数，减少重复代码
+                    const icon = utils.dom.createIcon(
+                        '32px',
+                        item.icon,
+                        item.title,
+                        { fallbackChar: item.title, sanitize: true }
+                    );
                     icon.className = 'nav-item-icon';
-                    icon.alt = item.title;
-                    
-                    // 【性能优化】切换分类时简化懒加载：直接使用原生懒加载
-                    // 浏览器会自动处理视口检测，避免复杂的滚动监听器
-                    icon.loading = 'lazy';
-                    icon.src = iconUrl;
-                    
-                    // 使用箭头函数处理图标加载失败
-                    icon.addEventListener('error', function handleError() {
-                        this.removeEventListener('error', handleError);
-                        const firstChar = item.title.charAt(0).toUpperCase();
-                        this.src = `https://placehold.co/32x32/f0f0f0/000000?text=${encodeURIComponent(firstChar)}`;
-                    });
                     
                     iconWrapper.appendChild(icon);
                     
@@ -542,10 +549,12 @@ export const navigationModule = {
                 requestAnimationFrame(() => {
                     dom.navigationGrid.style.opacity = '1';
                     
-                    // 移除过渡和更新标志
+                    // 批量移除过渡和更新标志（减少重排）
                     setTimeout(() => {
-                        dom.navigationGrid.style.opacity = '';
-                        dom.navigationGrid.style.transition = '';
+                        Object.assign(dom.navigationGrid.style, {
+                            opacity: '',
+                            transition: ''
+                        });
                         document.body.removeAttribute('data-updating');
                     }, 200);
                 });
@@ -555,81 +564,32 @@ export const navigationModule = {
             if (!dom.navContextMenu) return;
             const menu = dom.navContextMenu;
             
-            const fragment = document.createDocumentFragment();
-            
-            // 使用button而不是a标签，避免显示URL
-            const editItem = document.createElement('button');
-            editItem.className = 'dropdown-item';
-            editItem.dataset.action = 'edit-nav-item';
-            editItem.textContent = '编辑';
-            fragment.appendChild(editItem);
-            
-            const divider = document.createElement('div');
-            divider.className = 'context-menu-divider';
-            fragment.appendChild(divider);
-            
-            const deleteItem = document.createElement('button');
-            deleteItem.className = 'dropdown-item';
-            deleteItem.dataset.action = 'delete-nav-item';
-            deleteItem.style.color = 'var(--red)';
-            deleteItem.textContent = '删除';
-            fragment.appendChild(deleteItem);
+            const menuItems = [
+                { text: '编辑', action: 'edit-nav-item', elementType: 'button' },
+                { type: 'divider' },
+                { text: '删除', action: 'delete-nav-item', elementType: 'button', color: 'var(--red)' }
+            ];
             
             menu.innerHTML = '';
-            menu.appendChild(fragment);
-            
-            menu.style.top = `${y}px`;
-            menu.style.left = `${x}px`;
-            menu.style.background = 'rgba(45, 45, 45, 0.7)';
-            menu.style.backgroundColor = 'rgba(45, 45, 45, 0.9)';
-            menu.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-            menu.style.borderRadius = '16px';
-            menu.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
-            menu.classList.add('visible');
+            menu.appendChild(utils.dom.createContextMenuItems(menuItems));
+            utils.dom.applyContextMenuStyle(menu, x, y);
         },
         tabContextMenu: (x, y, tab) => {
             if (!dom.navTabContextMenu) return;
             const menu = dom.navTabContextMenu;
             
-            const fragment = document.createDocumentFragment();
-            
-            // 使用button而不是a标签，避免显示URL
-            const renameItem = document.createElement('button');
-            renameItem.className = 'dropdown-item';
-            renameItem.dataset.action = 'rename-nav-group';
-            renameItem.textContent = '重命名分类';
-            fragment.appendChild(renameItem);
-            
-            const deleteItem = document.createElement('button');
-            deleteItem.className = 'dropdown-item';
-            deleteItem.dataset.action = 'delete-nav-group';
-            deleteItem.style.color = 'var(--red)';
-            deleteItem.textContent = '删除分类';
-            fragment.appendChild(deleteItem);
-            
-            const divider = document.createElement('div');
-            divider.className = 'context-menu-divider';
-            fragment.appendChild(divider);
-            
-            const manageItem = document.createElement('button');
-            manageItem.className = 'dropdown-item';
-            manageItem.dataset.action = 'manage-nav-groups';
-            manageItem.textContent = '管理所有分类...';
-            fragment.appendChild(manageItem);
+            const menuItems = [
+                { text: '重命名分类', action: 'rename-nav-group', elementType: 'button' },
+                { text: '删除分类', action: 'delete-nav-group', elementType: 'button', color: 'var(--red)' },
+                { type: 'divider' },
+                { text: '管理所有分类...', action: 'manage-nav-groups', elementType: 'button' }
+            ];
             
             menu.innerHTML = '';
-            menu.appendChild(fragment);
-            const rect = tab.getBoundingClientRect();
-            const menuHeight = menu.offsetHeight;
+            menu.appendChild(utils.dom.createContextMenuItems(menuItems));
             
-            menu.style.top = `${rect.top - menuHeight - 8}px`;
-            menu.style.left = `${rect.left + (rect.width / 2) - (menu.offsetWidth / 2)}px`;
-            menu.style.background = 'rgba(45, 45, 45, 0.7)';
-            menu.style.backgroundColor = 'rgba(45, 45, 45, 0.9)';
-            menu.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-            menu.style.borderRadius = '16px';
-            menu.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
-            menu.classList.add('visible', 'opens-up');
+            const rect = tab.getBoundingClientRect();
+            utils.dom.applyContextMenuStyle(menu, x, y, { opensUp: true, centerX: true, rect });
         },
         groupManagementModal: () => {
             if (!dom.navGroupsList) return;

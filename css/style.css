@@ -1861,8 +1861,11 @@ body.animations-complete .nav-item {
 }
 
 .nav-item:hover .nav-item-icon-wrapper {
-    transform: translateY(-5px) scale(1.05);
+    transform: translateY(-10px) scale(1.10);
     box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+.nav-item:hover .nav-item-icon {
+    transform: scale(1.15);
 }
 .nav-item.dragging {
     opacity: 0.5;
@@ -1890,14 +1893,14 @@ body.animations-complete .nav-item {
     backdrop-filter: blur(var(--icon-blur));
     -webkit-backdrop-filter: blur(var(--icon-blur));
     border: 1px solid rgba(255, 255, 255, 0.25);
-    transition: transform 0.3s var(--rebound-easing), box-shadow 0.3s ease;
+    transition: transform 0.2s var(--rebound-easing), box-shadow 0.2s ease;
     flex-shrink: 0;
     pointer-events: none;
 }
 .nav-item-icon { /* Adapted from '.nav-icon-wrapper img' */
-    width: calc(var(--nav-item-size) * 0.45); 
-    height: calc(var(--nav-item-size) * 0.45);
-    transition: background-color 0.2s ease; 
+    width: calc(var(--nav-item-size) * 0.70); 
+    height: calc(var(--nav-item-size) * 0.70);
+    transition: transform 0.2s var(--rebound-easing), background-color 0.2s ease; 
     border-radius: 8px;
     object-fit: contain; /* Added for better image handling */
     display: block; /* 恢复显示图标 */
@@ -1953,8 +1956,8 @@ body.shape-h-capsule #navigation-grid .nav-item:hover .nav-item-icon-wrapper {
     box-shadow: 0 12px 28px rgba(0,0,0,0.32);
 }
 body.shape-h-capsule #navigation-grid .nav-item-icon { /* Adapted selector */
-    width: calc(var(--nav-item-size) * 0.34);
-    height: calc(var(--nav-item-size) * 0.34);
+    width: calc(var(--nav-item-size) * 0.42);
+    height: calc(var(--nav-item-size) * 0.42);
     flex-shrink: 0;
 }
 
@@ -1979,7 +1982,9 @@ body.shape-h-capsule #navigation-grid .nav-item-title { /* Adapted selector */
     padding: calc(16px * var(--dock-scale, 1));
     background: transparent;
     overflow: hidden; /* 防止产生滚动条 */
-    /* 移除transform scale以避免模糊问题 */
+    /* 【修复】确保动画结束后文字清晰 */
+    transform: translateZ(0);
+    will-change: auto;
     /* 初始隐藏，由JS动画控制显示 */
     opacity: 0;
 }
@@ -2024,10 +2029,14 @@ body.shape-h-capsule #navigation-grid .nav-item-title { /* Adapted selector */
     text-align: center;
     transform-origin: center;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    /* 字体渲染优化 - 增强锐利度 */
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    /* 【修复】字体渲染优化 - 使用subpixel-antialiased获得更清晰的文字 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
     letter-spacing: 0.05px;
+    /* 确保文字在GPU渲染后仍然清晰 */
+    will-change: auto;
+    transform: translateZ(0);
 }
 
 .nav-tab:active {

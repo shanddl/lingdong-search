@@ -2,9 +2,23 @@ import { STATIC_CONFIG } from './constants.js';
 import { logger } from './logger.js';
 
 // =================================================================
-// 浏览器存储模块 - 使用 chrome.storage.local 和 localStorage 双重存储
+// 统一存储模块 - 合并 storage.js 和 storage-manager.js 的功能
+// 支持 chrome.storage.local 和 localStorage 双重存储
 // =================================================================
+
+// 存储键名常量（原StorageManager.KEYS）
+export const STORAGE_KEYS = {
+    CURRENT_WALLPAPER: 'currentWallpaper',
+    WALLPAPER_LOCKED: 'wallpaperLocked',
+    MY_UPLOADS: 'my_uploaded_wallpapers',
+    RECENT_COLORS: 'recentColors',
+    USER_DATA: 'userData'
+};
+
 export const storage = {
+    // =================================================================
+    // 主用户数据存储（支持chrome.storage同步）
+    // =================================================================
     get: (callback) => {
         try {
             // 先从 localStorage 快速读取（避免等待 Service Worker）
@@ -120,5 +134,169 @@ export const storage = {
             logger.error('Storage set error:', error);
             if (callback) callback(error);
         }
+    },
+
+    // =================================================================
+    // 通用存储方法（原StorageManager功能，仅使用localStorage）
+    // =================================================================
+    
+    /**
+     * 获取存储项（通用方法，仅localStorage）
+     * @param {string} key - 存储键名
+     * @param {*} defaultValue - 默认值
+     * @returns {*} 存储的值或默认值
+     */
+    getItem: (key, defaultValue = null) => {
+        try {
+            const value = localStorage.getItem(key);
+            if (value === null) return defaultValue;
+            
+            // 尝试解析JSON
+            try {
+                return JSON.parse(value);
+            } catch {
+                // 如果不是JSON，返回原始字符串
+                return value;
+            }
+        } catch (error) {
+            logger.warn(`[Storage] 读取失败: ${key}`, error);
+            return defaultValue;
+        }
+    },
+
+    /**
+     * 设置存储项（通用方法，仅localStorage）
+     * @param {string} key - 存储键名
+     * @param {*} value - 要存储的值
+     * @returns {boolean} 是否成功
+     */
+    setItem: (key, value) => {
+        try {
+            const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+            localStorage.setItem(key, stringValue);
+            return true;
+        } catch (error) {
+            logger.error(`[Storage] 保存失败: ${key}`, error);
+            
+            if (error.name === 'QuotaExceededError') {
+                logger.error('❌ localStorage 配额已满！');
+            }
+            
+            return false;
+        }
+    },
+
+    /**
+     * 删除存储项
+     * @param {string} key - 存储键名
+     * @returns {boolean} 是否成功
+     */
+    removeItem: (key) => {
+        try {
+            localStorage.removeItem(key);
+            return true;
+        } catch (error) {
+            logger.error(`[Storage] 删除失败: ${key}`, error);
+            return false;
+        }
+    },
+
+    /**
+     * 清空所有存储（谨慎使用）
+     * @returns {boolean} 是否成功
+     */
+    clear: () => {
+        try {
+            localStorage.clear();
+            return true;
+        } catch (error) {
+            logger.error('[Storage] 清空失败', error);
+            return false;
+        }
+    },
+
+    /**
+     * 获取存储使用情况
+     * @returns {Object} {usedBytes, usedMB, usedPercentage}
+     */
+    getUsage: () => {
+        try {
+            let total = 0;
+            const keys = Object.keys(localStorage);
+            
+            for (let i = 0; i < keys.length; i++) {
+                const key = keys[i];
+                const value = localStorage.getItem(key);
+                if (value !== null) {
+                    total += value.length + key.length;
+                }
+            }
+            
+            const usedMB = (total / (1024 * 1024)).toFixed(2);
+            const maxSize = 5 * 1024 * 1024; // 假设5MB限制
+            const usedPercentage = Math.round((total / maxSize) * 100);
+            
+            return {
+                usedBytes: total,
+                usedMB: parseFloat(usedMB),
+                usedPercentage: usedPercentage
+            };
+        } catch (error) {
+            logger.error('[Storage] 获取使用情况失败', error);
+            return { usedBytes: 0, usedMB: 0, usedPercentage: 0 };
+        }
+    },
+
+    /**
+     * 检查是否有足够空间
+     * @param {number} requiredBytes - 需要的字节数
+     * @returns {boolean} 是否有足够空间
+     */
+    hasSpace: (requiredBytes) => {
+        const usage = storage.getUsage();
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        return (usage.usedBytes + requiredBytes) < maxSize;
+    },
+
+    /**
+     * 获取所有键名
+     * @returns {Array<string>} 所有键名
+     */
+    getAllKeys: () => {
+        try {
+            return Object.keys(localStorage);
+        } catch (error) {
+            logger.error('[Storage] 获取键名失败', error);
+            return [];
+        }
+    },
+
+    /**
+     * 检查键是否存在
+     * @param {string} key - 存储键名
+     * @returns {boolean} 是否存在
+     */
+    has: (key) => {
+        try {
+            return localStorage.getItem(key) !== null;
+        } catch (error) {
+            logger.error(`[Storage] 检查键失败: ${key}`, error);
+            return false;
+        }
     }
 };
+
+// 向后兼容：导出 StorageManager 作为别名（逐步迁移后可以移除）
+if (typeof window !== 'undefined') {
+    window.StorageManager = {
+        KEYS: STORAGE_KEYS,
+        get: storage.getItem,
+        set: storage.setItem,
+        remove: storage.removeItem,
+        clear: storage.clear,
+        getUsage: storage.getUsage,
+        hasSpace: storage.hasSpace,
+        getAllKeys: storage.getAllKeys,
+        has: storage.has
+    };
+}

@@ -43,7 +43,8 @@ export const DOMElementsToCache = [
     'engine-size-slider',  // 引擎大小滑块
     'engine-size-value',  // 引擎大小值显示
     'engine-spacing-slider',  // 引擎间距滑块
-    'engine-spacing-value'  // 引擎间距值显示
+    'engine-spacing-value',  // 引擎间距值显示
+    'wallpaper-library-btn'  // 壁纸库按钮
 ];
 
 export function cacheDOMElements() {

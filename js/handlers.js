@@ -57,7 +57,7 @@ export const handlers = {
             return; 
         }
 
-        console.log('[ContextMenu] 🖱️ Right click detected at:', e.clientX, e.clientY);
+        logger.debug('[ContextMenu] Right click detected at:', e.clientX, e.clientY);
 
         e.preventDefault();
         e.stopPropagation();
@@ -67,47 +67,23 @@ export const handlers = {
         
         // 显示主右键菜单
         if (dom.mainContextMenu) {
-            console.log('[ContextMenu] 📋 Creating menu items...');
-            // 先清空菜单内容
-            dom.mainContextMenu.innerHTML = '';
+            logger.debug('[ContextMenu] Creating menu items...');
             
             // 创建菜单项
             const menuItems = [
-                { text: '外观设置', action: 'open-appearance-settings' },
+                { text: '外观设置', action: 'open-appearance-settings', elementType: 'div' },
                 { type: 'divider' },
-                { text: '刷新页面', action: 'refresh-page' }
+                { text: '刷新页面', action: 'refresh-page', elementType: 'div' }
             ];
             
-            // 生成菜单项
-            menuItems.forEach(item => {
-                if (item.type === 'divider') {
-                    const divider = document.createElement('div');
-                    divider.className = 'context-menu-divider';
-                    dom.mainContextMenu.appendChild(divider);
-                } else {
-                    const menuItem = document.createElement('div');
-                    menuItem.className = 'dropdown-item';
-                    menuItem.dataset.action = item.action;
-                    menuItem.textContent = item.text;
-                    menuItem.style.cursor = 'pointer';
-                    dom.mainContextMenu.appendChild(menuItem);
-                }
-            });
+            // 【优化】使用统一的菜单创建工具函数
+            dom.mainContextMenu.innerHTML = '';
+            dom.mainContextMenu.appendChild(utils.dom.createContextMenuItems(menuItems));
+            utils.dom.applyContextMenuStyle(dom.mainContextMenu, e.clientX, e.clientY);
             
-            // 设置菜单位置
-            dom.mainContextMenu.style.top = `${e.clientY}px`;
-            dom.mainContextMenu.style.left = `${e.clientX}px`;
-            
-            // 确保菜单可见性样式正确
-            dom.mainContextMenu.style.visibility = 'visible';
-            dom.mainContextMenu.style.opacity = '1';
-            
-            // 显示菜单
-            dom.mainContextMenu.classList.add('visible');
-            
-            console.log('[ContextMenu] ✅ Menu displayed with', menuItems.length - 1, 'items');
+            logger.debug('[ContextMenu] Menu displayed with', menuItems.length - 1, 'items');
         } else {
-            console.error('[ContextMenu] ❌ mainContextMenu element not found!');
+            logger.error('[ContextMenu] mainContextMenu element not found!');
         }
         
         // 先关闭其他菜单，但不包括即将显示的右键菜单
@@ -980,13 +956,13 @@ function testIconSourcesCommon(urlInputId, iconSourcesListId, iconSourcesContent
         
         utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
         
-    } catch (error) {
-        console.error('测试图标源失败:', error);
-        if (iconSourcesContent) {
-            iconSourcesContent.innerHTML = '<div style="color: var(--error-color);">测试图标源失败</div>';
+        } catch (error) {
+            logger.error('测试图标源失败:', error);
+            if (iconSourcesContent) {
+                iconSourcesContent.innerHTML = '<div style="color: var(--error-color);">测试图标源失败</div>';
+            }
+            utils.showToast('测试图标源失败: ' + error.message, 'error');
         }
-        utils.showToast('测试图标源失败: ' + error.message, 'error');
-    }
 }
 
 // =================================================================
@@ -1032,37 +1008,75 @@ const actionHandlers = {
         utils.closeAllDropdowns();
     },
     'manage-engines': async () => {
-        utils.closeAllDropdowns();
-        
-        // 打开统一设置面板并切换到搜索Tab
-        const { openEffectsPanel } = await import('./features/effects-panel.js');
-        openEffectsPanel();
-        
-        // 切换到搜索Tab并展开引擎管理手风琴
-        setTimeout(() => {
-            const panel = document.getElementById('effectsSettingsPanel');
-            const searchTab = panel?.querySelector('[data-tab="search"]');
-            if (searchTab) searchTab.click();
+        logger.debug('[manage-engines] Handler called');
+        // 【修复】先打开面板，再关闭菜单，避免面板被关闭
+        try {
+            // 打开统一设置面板并切换到搜索Tab
+            const { openEffectsPanel } = await import('./features/effects-panel.js');
+            logger.debug('[manage-engines] Opening effects panel');
+            openEffectsPanel();
             
-            // 展开引擎管理手风琴（数据渲染由面板自动处理）
+            // 切换到搜索Tab并展开引擎管理手风琴
             setTimeout(() => {
-                const engineAccordion = panel?.querySelector('[data-accordion="engine-management"]');
-                if (engineAccordion && !engineAccordion.classList.contains('expanded')) {
-                    engineAccordion.querySelector('.effects-accordion-header').click();
+                const panel = document.getElementById('effectsSettingsPanel');
+                logger.debug('[manage-engines] Panel found:', !!panel);
+                if (panel) {
+                    const searchTab = panel.querySelector('[data-tab="search"]');
+                    logger.debug('[manage-engines] Search tab found:', !!searchTab);
+                    if (searchTab) {
+                        searchTab.click();
+                        
+                        // 展开引擎管理手风琴（数据渲染由面板自动处理）
+                        setTimeout(() => {
+                            const engineAccordion = panel.querySelector('[data-accordion="engine-management"]');
+                            logger.debug('[manage-engines] Engine accordion found:', !!engineAccordion);
+                            if (engineAccordion && !engineAccordion.classList.contains('expanded')) {
+                                const header = engineAccordion.querySelector('.effects-accordion-header');
+                                if (header) {
+                                    header.click();
+                                }
+                            }
+                        }, 100);
+                    }
                 }
             }, 100);
-        }, 100);
+            
+            // 最后关闭下拉菜单
+            utils.closeAllDropdowns();
+        } catch (error) {
+            logger.error('[manage-engines] Error:', error);
+        }
     },
     'open-settings': () => {
-        utils.closeAllDropdowns();
-        // 打开统一设置面板并切换到系统Tab
-        import('./features/effects-panel.js').then(module => {
-            module.openEffectsPanel();
-            // 切换到系统Tab
-            const panel = document.getElementById('effectsSettingsPanel');
-            const systemTab = panel.querySelector('[data-tab="system"]');
-            if (systemTab) systemTab.click();
-        });
+        logger.debug('[open-settings] Handler called');
+        // 【修复】先打开面板，再关闭菜单，避免面板被关闭
+        try {
+            // 打开统一设置面板并切换到系统Tab
+            import('./features/effects-panel.js').then(module => {
+                logger.debug('[open-settings] Opening effects panel');
+                module.openEffectsPanel();
+                
+                // 切换到系统Tab
+                setTimeout(() => {
+                    const panel = document.getElementById('effectsSettingsPanel');
+                    logger.debug('[open-settings] Panel found:', !!panel);
+                    if (panel) {
+                        const systemTab = panel.querySelector('[data-tab="system"]');
+                        logger.debug('[open-settings] System tab found:', !!systemTab);
+                        if (systemTab) {
+                            systemTab.click();
+                        }
+                    }
+                }, 100);
+            }).catch(error => {
+                logger.error('[open-settings] Error:', error);
+            });
+            
+            // 最后关闭下拉菜单
+            utils.closeAllDropdowns();
+        } catch (error) {
+            logger.error('[open-settings] Error:', error);
+        }
     },
     
     // Settings actions
@@ -1348,7 +1362,7 @@ const actionHandlers = {
             utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
             
         } catch (error) {
-            console.error('获取图标源失败:', error);
+            logger.error('获取图标源失败:', error);
             iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">获取图标源失败</div>';
             utils.showToast('获取图标源失败: ' + error.message, 'error');
         }
@@ -1427,7 +1441,7 @@ const actionHandlers = {
             utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
             
         } catch (error) {
-            console.error('测试图标源失败:', error);
+            logger.error('测试图标源失败:', error);
             if (iconSourcesContent) {
                 iconSourcesContent.innerHTML = '<div style="color: var(--error-color);">测试图标源失败</div>';
             }
@@ -1442,12 +1456,22 @@ const actionHandlers = {
         if (shouldOpen) searchModule.debouncedShowSuggestions(true);
     },
     'toggle-engine-menu': (target, e) => {
-        e.stopPropagation();
-        utils.setDropdownsVisibility(false, null);
+        // 【修复】阻止事件冒泡，避免触发document.body的点击事件
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+        
+        // 先关闭其他菜单
+        utils.closeVisibleMenus(dom.searchEngineMenu);
+        
+        // 切换搜索引擎菜单的显示状态
         if (dom.searchEngineMenu) {
+            const shouldOpen = !dom.searchEngineMenu.classList.contains('visible');
             dom.searchEngineMenu.classList.toggle('visible');
+            
             // 确保菜单内容已渲染
-            if (dom.searchEngineMenu.classList.contains('visible')) {
+            if (shouldOpen) {
                 render.searchEngineMenu();
             }
         } else {
@@ -1509,8 +1533,19 @@ const actionHandlers = {
     },
     'open-appearance-settings': () => {
         utils.closeAllDropdowns();
-        // 使用新的效果调节器面板替代原有的外观设置模态框
+        // 【修复】打开效果面板并切换到外观设置Tab
         openEffectsPanel();
+        
+        // 切换到外观Tab
+        setTimeout(() => {
+            const panel = document.getElementById('effectsSettingsPanel');
+            if (panel) {
+                const appearanceTab = panel.querySelector('[data-tab="appearance"]');
+                if (appearanceTab) {
+                    appearanceTab.click();
+                }
+            }
+        }, 100);
     },
     'set-nav-alignment': (target) => {
         const align = target.dataset.align;
@@ -1700,7 +1735,27 @@ export function handleActionClick(e) {
         if (action === 'toggle-scope-menu' || action === 'toggle-engine-menu') {
             actionHandlers[action](target, e);
         } else {
-            actionHandlers[action](target);
+            // 【修复】对于其他action，根据handler的参数数量调用
+            const handler = actionHandlers[action];
+            try {
+                // 检查handler的函数签名长度
+                // async函数的length可能不准确，需要特殊处理
+                if (action === 'manage-engines' || action === 'open-settings') {
+                    // 这些handler明确不需要参数
+                    handler();
+                } else if (handler.length > 1) {
+                    // handler需要多个参数（包括event）
+                    handler(target, e);
+                } else if (handler.length === 1) {
+                    // handler只需要target
+                    handler(target);
+                } else {
+                    // handler不需要参数
+                    handler();
+                }
+            } catch (error) {
+                logger.error(`Error executing action handler for "${action}":`, error);
+            }
         }
         
         // 点击菜单项后关闭主右键菜单
@@ -1712,10 +1767,32 @@ export function handleActionClick(e) {
                 mainContextMenu.style.visibility = 'hidden';
             }
         }
+        
+        // 【修复】点击搜索引擎菜单内的按钮后，延迟关闭搜索引擎菜单
+        // 注意：对于manage-engines和open-settings，先让handler执行，再关闭菜单
+        const isInEngineMenu = target.closest('#search-engine-menu');
+        if (isInEngineMenu && action !== 'manage-engines' && action !== 'open-settings') {
+            const searchEngineMenu = document.getElementById('search-engine-menu');
+            if (searchEngineMenu) {
+                searchEngineMenu.classList.remove('visible');
+            }
+        } else if (isInEngineMenu && (action === 'manage-engines' || action === 'open-settings')) {
+            // 延迟关闭菜单，确保handler能正常执行
+            setTimeout(() => {
+                const searchEngineMenu = document.getElementById('search-engine-menu');
+                if (searchEngineMenu) {
+                    searchEngineMenu.classList.remove('visible');
+                }
+            }, 50);
+        }
     }
     
     // Prevent default for buttons and links, but allow form submit buttons
+    // 【修复】对于manage-engines和open-settings，不要阻止默认行为，确保能正常打开面板
     if (target.tagName === 'A' || (target.tagName === 'BUTTON' && !target.closest('.custom-select-wrapper') && target.type !== 'submit')) {
-        e.preventDefault();
+        // 但不要阻止manage-engines和open-settings按钮的默认行为
+        if (action !== 'manage-engines' && action !== 'open-settings') {
+            e.preventDefault();
+        }
     }
 }

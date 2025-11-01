@@ -216,17 +216,22 @@
                     setTimeout(() => {
                         dockContainer.style.transition = `all ${dur.dock * speed}ms ${easing.bounce}, filter ${dur.dock * speed * 0.75}ms ${easing.ease}`;
                         dockContainer.style.opacity = '1';
-                        dockContainer.style.transform = 'translateY(0) translateX(0) scale(1) rotate(0deg)';
+                        // 【修复】使用translateZ(0)启用硬件加速，同时避免文字模糊
+                        dockContainer.style.transform = 'translateY(0) translateX(0) scale(1) rotate(0deg) translateZ(0)';
                         dockContainer.style.filter = 'blur(0px)';
                         
                         // 弹出后晃动一下（增强版）
                         setTimeout(() => {
                             dockContainer.style.transition = 'transform 0.45s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-                            dockContainer.style.transform = 'scale(1.08)';
+                            dockContainer.style.transform = 'scale(1.08) translateZ(0)';
                             setTimeout(() => {
-                                dockContainer.style.transform = 'scale(0.98)';
+                                dockContainer.style.transform = 'scale(0.98) translateZ(0)';
                                 setTimeout(() => {
-                                    dockContainer.style.transform = 'scale(1)';
+                                    // 【修复】动画结束后完全重置transform，确保文字清晰
+                                    dockContainer.style.transform = 'translateZ(0)';
+                                    dockContainer.style.willChange = 'auto';
+                                    // 强制重绘以确保清晰度
+                                    void dockContainer.offsetHeight;
                                 }, 180);
                             }, 220);
                         }, dur.dock * speed);
