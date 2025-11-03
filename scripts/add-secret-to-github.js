@@ -83,3 +83,8 @@ console.log(`gh secret set CRX_PRIVATE_KEY --repo shanddl/lingdong-search --body
 console.log('\n✅ 添加成功后，GitHub Actions 将自动使用此私钥进行签名\n');
 
 
+
+
+
+
+

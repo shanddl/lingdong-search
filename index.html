@@ -178,6 +178,119 @@
     <!-- 效果调节器面板遮罩 -->
     <div class="effects-panel-overlay" id="effectsPanelOverlay"></div>
 
+    <!-- 壁纸库面板 -->
+    <div class="wallpaper-library-panel" id="wallpaperLibraryPanel" style="display: none !important;">
+        <!-- 关闭按钮 -->
+        <button class="wallpaper-library-close" id="wallpaper-close-btn" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <!-- 左侧导航栏 -->
+        <aside class="wallpaper-library-sidebar">
+            <h2 class="wallpaper-library-title">壁纸库</h2>
+            <nav class="wallpaper-library-nav" id="wallpaper-library-nav">
+                <button class="wallpaper-nav-item" data-source="solidcolor">
+                    <span>纯色</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="official">
+                    <span>官方壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item active" data-source="bing">
+                    <span>必应壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="myuploads">
+                    <span>自定义壁纸</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- 右侧主内容区 -->
+        <div class="wallpaper-library-content">
+            <!-- 360壁纸分类导航（动态显示） -->
+            <div class="wallpaper-subnav" id="wallpaper-360-subnav" style="display: none;">
+                <!-- 分类按钮将在这里动态生成 -->
+                <div class="wallpaper-search-box">
+                    <input type="text" id="wallpaper-360-search-input" class="wallpaper-search-input" placeholder="智能搜索：美女、风景、动漫、汽车...">
+                    <button id="wallpaper-360-search-btn" class="wallpaper-search-btn" title="搜索">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 必应日期导航（动态显示） -->
+            <div class="wallpaper-subnav" id="wallpaper-bing-date-nav" style="display: none;">
+                <button class="wallpaper-subnav-btn" data-days="1">今天</button>
+                <button class="wallpaper-subnav-btn active" data-days="7">最近7天</button>
+                <button class="wallpaper-subnav-btn" data-days="30">最近30天</button>
+                <button class="wallpaper-subnav-btn" data-days="60">最近60天</button>
+            </div>
+
+            <!-- 自定义壁纸上传区域（仅在"我的上传"时显示） -->
+            <div class="wallpaper-upload-area" id="wallpaper-upload-area" style="display: none;">
+                <div class="wallpaper-upload-dropzone" id="wallpaper-upload-dropzone">
+                    <input type="file" id="wallpaper-file-input" multiple accept="image/*" style="display: none;">
+                    <div class="wallpaper-upload-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                    </div>
+                    <div class="wallpaper-upload-text">
+                        <p>拖拽图片到这里或<span class="wallpaper-upload-link">点击上传</span></p>
+                        <p class="wallpaper-upload-hint">支持 JPG、PNG、GIF、WebP，最大 10MB</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 壁纸网格 -->
+            <div class="wallpaper-content-main">
+                <div class="wallpaper-grid" id="wallpaper-library-grid"></div>
+            </div>
+
+            <!-- 分页控件 -->
+            <div class="wallpaper-pagination" id="wallpaper-pagination">
+                <button class="wallpaper-page-btn" id="wallpaper-page-prev" title="上一页">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                </button>
+                <div class="wallpaper-page-info">
+                    <span id="wallpaper-page-current">1</span>
+                    <span class="wallpaper-page-separator">/</span>
+                    <span id="wallpaper-page-total">-</span>
+                </div>
+                <button class="wallpaper-page-btn" id="wallpaper-page-next" title="下一页">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- 窗口内全屏预览 -->
+        <div class="wallpaper-fullscreen-view" id="wallpaper-fullscreen-view">
+            <img src="" alt="全屏预览" class="wallpaper-fullscreen-img" id="wallpaper-fullscreen-img">
+            <div class="wallpaper-fullscreen-controls">
+                <button class="wallpaper-fullscreen-btn" id="wallpaper-set-bg-btn" title="设为背景">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                    </svg>
+                </button>
+                <a href="#" class="wallpaper-fullscreen-btn" id="wallpaper-download-btn" download title="下载壁纸">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
     <!-- 统一设置侧边面板 - Tab分类 -->
     <div class="effects-settings-panel" id="effectsSettingsPanel" style="display: none !important;">
         <!-- 拖动手柄 -->
@@ -974,6 +1087,8 @@
         </div>
     </div>
 
+    <!-- IndexedDB存储管理器（壁纸库需要） -->
+    <script src="js/utils/indexeddb-storage.js"></script>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

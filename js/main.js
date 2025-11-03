@@ -175,9 +175,11 @@ function init() {
     // 壁纸库按钮点击事件（使用缓存的DOM元素）
     if (dom.wallpaperLibraryBtn) {
         globalEventIds.push(
-            eventManager.add(dom.wallpaperLibraryBtn, 'click', (e) => {
+            eventManager.add(dom.wallpaperLibraryBtn, 'click', async (e) => {
                 e.preventDefault();
-                window.location.href = 'wallpaper.html';
+                // 打开壁纸库面板而不是跳转页面
+                const { openWallpaperLibraryPanel } = await import('./features/wallpaper-library-panel.js');
+                openWallpaperLibraryPanel();
             })
         );
     }

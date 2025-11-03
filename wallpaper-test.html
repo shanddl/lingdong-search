@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>壁纸库布局测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #1f272f;
+            --card-bg-color: #2a343f;
+            --text-color: #e0e0e0;
+            --text-secondary-color: #a0a0a0;
+            --border-color: #3c4043;
+            --active-blue: #8ab4f8;
+            --active-blue-bg: rgba(138, 180, 248, 0.1);
+            --sidebar-bg: #1f272f;
+            --sidebar-width: 150px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* 主容器 - 窗口布局 1200×800 */
+        .wallpaper-library-panel {
+            position: relative;
+            width: 1200px;
+            height: 800px;
+            display: flex;
+            z-index: 10000;
+            background: var(--bg-color);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        /* 关闭按钮 */
+        .wallpaper-library-close {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            color: var(--text-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .wallpaper-library-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .wallpaper-library-close svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* 左侧导航栏 */
+        .wallpaper-library-sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .wallpaper-library-title {
+            padding: 20px 12px 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-color);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 8px;
+        }
+
+        .wallpaper-library-nav {
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+        }
+
+        .wallpaper-nav-item {
+            position: relative;
+            padding: 12px 12px 12px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 13px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+        }
+
+        /* 激活指示条 */
+        .wallpaper-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--active-blue);
+            border-radius: 0 2px 2px 0;
+        }
+
+        .wallpaper-nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .wallpaper-nav-item.active {
+            background: var(--active-blue-bg);
+            color: var(--active-blue);
+        }
+
+        .wallpaper-nav-item span {
+            flex: 1;
+        }
+
+        /* 参数设置按钮 */
+        .wallpaper-nav-settings {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* 右侧主内容区 */
+        .wallpaper-library-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-color);
+        }
+
+        /* 壁纸网格容器 */
+        .wallpaper-content-main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 32px;
+        }
+
+        .wallpaper-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .wallpaper-item {
+            aspect-ratio: 16 / 10;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--card-bg-color);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+        }
+
+        .wallpaper-item:hover {
+            transform: scale(1.03);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        .wallpaper-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .wallpaper-item img.loaded {
+            opacity: 1;
+        }
+
+        /* 懒加载占位 */
+        .wallpaper-item.lazy-loading {
+            background: var(--card-bg-color);
+        }
+
+        .wallpaper-item.lazy-loading::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(255, 255, 255, 0.05) 50%, 
+                transparent 100%);
+            animation: shimmer 1.5s infinite;
+            z-index: 1;
+        }
+
+        /* 加载中提示 */
+        .wallpaper-item.lazy-loading::before {
+            content: '加载中';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-color);
+            font-size: 16px;
+            font-weight: 500;
+            z-index: 2;
+            pointer-events: none;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px 12px;
+            border-radius: 4px;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* 搜索栏 */
+        .wallpaper-search-container {
+            padding: 16px 32px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-color);
+        }
+
+        .wallpaper-search-box {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .wallpaper-search-input {
+            width: 100%;
+            padding: 10px 40px 10px 16px;
+            background: var(--card-bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .wallpaper-search-input:focus {
+            border-color: var(--active-blue);
+            box-shadow: 0 0 0 3px var(--active-blue-bg);
+        }
+
+        .wallpaper-search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            pointer-events: none;
+            color: var(--text-secondary-color);
+        }
+
+        /* 页面导航栏 */
+        .wallpaper-pagination {
+            padding: 16px 32px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 68px;
+            flex-shrink: 0;
+        }
+
+        .wallpaper-pagination-btn {
+            min-width: 36px;
+            height: 36px;
+            padding: 0 12px;
+            background: var(--card-bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wallpaper-pagination-btn:hover:not(:disabled) {
+            background: var(--active-blue-bg);
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+        }
+
+        .wallpaper-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .wallpaper-pagination-btn.active {
+            background: var(--active-blue);
+            border-color: var(--active-blue);
+            color: #fff;
+        }
+
+        .wallpaper-pagination-arrow {
+            min-width: 36px;
+            height: 36px;
+            padding: 0;
+            background: var(--card-bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wallpaper-pagination-arrow:hover:not(:disabled) {
+            background: var(--active-blue-bg);
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+        }
+
+        .wallpaper-pagination-arrow:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .wallpaper-pagination-arrow svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* 窗口内全屏预览 */
+        .wallpaper-fullscreen-view {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 10002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .wallpaper-fullscreen-view.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .wallpaper-fullscreen-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            transform: scale(0.95);
+        }
+
+        .wallpaper-fullscreen-view.visible .wallpaper-fullscreen-img {
+            transform: scale(1);
+        }
+
+        .wallpaper-fullscreen-controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 10003;
+        }
+
+        .wallpaper-fullscreen-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(42, 52, 63, 0.9);
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .wallpaper-fullscreen-btn:hover {
+            background: var(--active-blue);
+            transform: scale(1.1);
+        }
+
+        .wallpaper-fullscreen-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* 滚动条样式 */
+        .wallpaper-library-sidebar::-webkit-scrollbar,
+        .wallpaper-content-main::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .wallpaper-library-sidebar::-webkit-scrollbar-track,
+        .wallpaper-content-main::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .wallpaper-library-sidebar::-webkit-scrollbar-thumb,
+        .wallpaper-content-main::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .wallpaper-library-sidebar::-webkit-scrollbar-thumb:hover,
+        .wallpaper-content-main::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <!-- 壁纸库面板 -->
+    <div class="wallpaper-library-panel">
+        <!-- 关闭按钮 -->
+        <button class="wallpaper-library-close" id="wallpaper-close-btn" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <!-- 左侧导航栏 -->
+        <aside class="wallpaper-library-sidebar">
+            <h2 class="wallpaper-library-title">壁纸库</h2>
+            <nav class="wallpaper-library-nav">
+                <button class="wallpaper-nav-item" data-source="solidcolor">
+                    <span>纯色</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="official">
+                    <span>官方壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item active" data-source="bing">
+                    <span>必应壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="dynamic">
+                    <span>动态壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="wallhaven">
+                    <span>Wallhaven</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="deepin">
+                    <span>deepin</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="myuploads">
+                    <span>自定义壁纸</span>
+                </button>
+                <button class="wallpaper-nav-item" data-source="favorites">
+                    <span>我的收藏</span>
+                </button>
+            </nav>
+            <div class="wallpaper-nav-settings">
+                <button class="wallpaper-nav-item" data-source="settings">
+                    <span>参数设置</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 右侧主内容区 -->
+        <div class="wallpaper-library-content">
+            <!-- 搜索栏 -->
+            <div class="wallpaper-search-container">
+                <div class="wallpaper-search-box">
+                    <input type="text" class="wallpaper-search-input" id="wallpaper-search-input" placeholder="搜索壁纸...">
+                    <svg class="wallpaper-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                </div>
+            </div>
+            <!-- 壁纸网格 -->
+            <div class="wallpaper-content-main">
+                <div class="wallpaper-grid" id="wallpaper-grid">
+                    <!-- 壁纸将通过JavaScript动态加载 -->
+                </div>
+            </div>
+            <!-- 页面导航栏 -->
+            <div class="wallpaper-pagination" id="wallpaper-pagination">
+                <!-- 分页按钮将通过JavaScript动态生成 -->
+            </div>
+        </div>
+
+        <!-- 窗口内全屏预览 -->
+        <div class="wallpaper-fullscreen-view" id="wallpaper-fullscreen-view">
+            <img src="" alt="全屏预览" class="wallpaper-fullscreen-img" id="wallpaper-fullscreen-img">
+            <div class="wallpaper-fullscreen-controls">
+                <button class="wallpaper-fullscreen-btn" id="wallpaper-set-bg-btn" title="设为背景">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                    </svg>
+                </button>
+                <a href="#" class="wallpaper-fullscreen-btn" id="wallpaper-download-btn" download title="下载壁纸">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const panel = document.querySelector('.wallpaper-library-panel');
+        const closeBtn = document.getElementById('wallpaper-close-btn');
+        const fullscreenView = document.getElementById('wallpaper-fullscreen-view');
+        const fullscreenImg = document.getElementById('wallpaper-fullscreen-img');
+        const setBgBtn = document.getElementById('wallpaper-set-bg-btn');
+        const downloadBtn = document.getElementById('wallpaper-download-btn');
+        const wallpaperGrid = document.getElementById('wallpaper-grid');
+        const searchInput = document.getElementById('wallpaper-search-input');
+        const paginationContainer = document.getElementById('wallpaper-pagination');
+
+        // 壁纸数据管理
+        class WallpaperManager {
+            constructor() {
+                this.allWallpapers = [];
+                this.filteredWallpapers = [];
+                this.currentPage = 1;
+                this.itemsPerPage = 12;
+                this.totalPages = 1;
+                this.searchQuery = '';
+                this.currentSource = 'bing';
+            }
+
+            // 生成测试壁纸数据
+            generateWallpapers(count = 150) {
+                const colors = [
+                    '#667eea', '#764ba2', '#f093fb', '#f5576c',
+                    '#4facfe', '#00f2fe', '#43e97b', '#38f9d7',
+                    '#fa709a', '#fee140', '#30cfd0', '#330867',
+                    '#a8edea', '#fed6e3', '#ffecd2', '#fcb69f'
+                ];
+                const keywords = ['自然', '城市', '抽象', '科技', '艺术', '风景', '建筑', '人物'];
+                
+                // 根据不同的数据源生成不同数量的壁纸
+                if (this.currentSource === 'solidcolor') {
+                    // 纯色壁纸：生成更多颜色选项（例如120个，分10页）
+                    const solidColors = [
+                        '#FF0000', '#FF7F00', '#FFFF00', '#7FFF00', '#00FF00',
+                        '#00FF7F', '#00FFFF', '#007FFF', '#0000FF', '#7F00FF',
+                        '#FF00FF', '#FF007F', '#800000', '#808000', '#008000',
+                        '#008080', '#000080', '#800080', '#808080', '#C0C0C0',
+                        '#FFC0CB', '#FF69B4', '#FF1493', '#DC143C', '#B22222',
+                        '#8B0000', '#FF4500', '#FF6347', '#FF8C00', '#FFA500',
+                        '#FFD700', '#FFFF00', '#ADFF2F', '#7FFF00', '#00FF00',
+                        '#32CD32', '#00FA9A', '#00CED1', '#1E90FF', '#0000CD',
+                        '#8A2BE2', '#4B0082', '#9932CC', '#DA70D6', '#EE82EE',
+                        '#FF1493', '#DC143C', '#B22222', '#8B0000', '#A0522D',
+                        '#D2691E', '#CD853F', '#DEB887', '#F5DEB3', '#FFE4B5',
+                        '#FFE4E1', '#FFF0F5', '#FAEBD7', '#FDF5E6', '#FFFACD',
+                        '#F0FFF0', '#F5FFFA', '#F0FFFF', '#E0F6FF', '#E6E6FA',
+                        '#FFF8DC', '#FFEBCD', '#FFEFD5', '#FFDAB9', '#EEDD82',
+                        '#F0E68C', '#BDB76B', '#9ACD32', '#6B8E23', '#556B2F',
+                        '#2F4F4F', '#708090', '#778899', '#4682B4', '#5F9EA0',
+                        '#20B2AA', '#008B8B', '#00CED1', '#48D1CC', '#40E0D0',
+                        '#00FFFF', '#E0FFFF', '#AFEEEE', '#7FFFD4', '#66CDAA',
+                        '#8FBC8F', '#3CB371', '#2E8B57', '#228B22', '#006400',
+                        '#9ACD32', '#6B8E23', '#808000', '#556B2F', '#2F4F4F',
+                        '#F0FFF0', '#F5FFFA', '#FFF5EE', '#FFE4E1', '#FFF0F5',
+                        '#FFF8DC', '#FFEFD5', '#FDF5E6', '#F5F5DC', '#F5F5F5',
+                        '#F8F8FF', '#F0F8FF', '#E6E6FA', '#FFFACD', '#FFFFE0',
+                        '#FFFF00', '#FFD700', '#FFA500', '#FF8C00', '#FF6347',
+                        '#FF4500', '#FF0000', '#DC143C', '#B22222', '#8B0000'
+                    ];
+                    count = solidColors.length; // 使用实际颜色数量
+                    this.allWallpapers = solidColors.map((color, i) => ({
+                        id: i + 1,
+                        title: `纯色 ${i + 1}`,
+                        keyword: '纯色',
+                        color: color,
+                        source: this.currentSource
+                    }));
+                } else {
+                    this.allWallpapers = Array.from({ length: count }, (_, i) => ({
+                        id: i + 1,
+                        title: `壁纸 ${i + 1}`,
+                        keyword: keywords[i % keywords.length],
+                        color: colors[i % colors.length],
+                        source: this.currentSource
+                    }));
+                }
+                
+                this.filteredWallpapers = [...this.allWallpapers];
+                this.updateTotalPages();
+            }
+
+            // 搜索过滤
+            search(query) {
+                this.searchQuery = query.toLowerCase().trim();
+                if (!this.searchQuery) {
+                    this.filteredWallpapers = [...this.allWallpapers];
+                } else {
+                    this.filteredWallpapers = this.allWallpapers.filter(wp => 
+                        wp.title.toLowerCase().includes(this.searchQuery) ||
+                        wp.keyword.toLowerCase().includes(this.searchQuery)
+                    );
+                }
+                this.currentPage = 1;
+                this.updateTotalPages();
+                this.renderWallpapers();
+                this.renderPagination();
+            }
+
+            // 更新总页数
+            updateTotalPages() {
+                this.totalPages = Math.ceil(this.filteredWallpapers.length / this.itemsPerPage) || 1;
+            }
+
+            // 获取当前页的壁纸
+            getCurrentPageWallpapers() {
+                const start = (this.currentPage - 1) * this.itemsPerPage;
+                const end = start + this.itemsPerPage;
+                return this.filteredWallpapers.slice(start, end);
+            }
+
+            // 渲染壁纸网格
+            renderWallpapers() {
+                wallpaperGrid.innerHTML = '';
+                const wallpapers = this.getCurrentPageWallpapers();
+                
+                wallpapers.forEach(wp => {
+                    const item = document.createElement('div');
+                    item.className = 'wallpaper-item lazy-loading';
+                    item.dataset.wallpaperId = wp.id;
+                    item.dataset.wallpaperColor = wp.color;
+                    
+                    const img = document.createElement('img');
+                    img.alt = wp.title;
+                    
+                    item.appendChild(img);
+                    wallpaperGrid.appendChild(item);
+                });
+                
+                // 渲染完成后，立即加载当前页的所有元素
+                // 使用 requestAnimationFrame 确保 DOM 布局完成
+                requestAnimationFrame(() => {
+                    // 每页只有12个元素，直接加载所有元素以确保显示
+                    const allItems = wallpaperGrid.querySelectorAll('.wallpaper-item');
+                    allItems.forEach(item => {
+                        const img = item.querySelector('img');
+                        if (img && !img.classList.contains('loaded')) {
+                            this.loadWallpaperImage(item, img);
+                        }
+                    });
+                });
+            }
+
+            // 加载壁纸图片（延迟加载，优化性能）
+            loadWallpaperImage(item, img) {
+                const color = item.dataset.wallpaperColor;
+                const wallpaperId = item.dataset.wallpaperId;
+                
+                // 模拟异步加载（实际应用中这里应该是真实的图片URL）
+                setTimeout(() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 400;
+                    canvas.height = 250;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // 如果是纯色壁纸，直接填充纯色
+                    if (this.currentSource === 'solidcolor') {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    } else {
+                        // 其他壁纸使用渐变背景
+                        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                        gradient.addColorStop(0, color);
+                        gradient.addColorStop(1, '#000');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+                    
+                    // 显示壁纸编号
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const text = this.currentSource === 'solidcolor' ? `纯色 ${wallpaperId}` : `壁纸 ${wallpaperId}`;
+                    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+                    
+                    img.src = canvas.toDataURL();
+                    img.classList.add('loaded');
+                    item.classList.remove('lazy-loading');
+                }, Math.random() * 300); // 模拟网络延迟
+            }
+
+            // 渲染分页（始终显示，即使只有一页也显示页码信息）
+            renderPagination() {
+                if (!paginationContainer) return;
+                paginationContainer.innerHTML = '';
+                
+                // 总是显示分页控件，包括只有一页的情况
+                if (this.totalPages <= 1) {
+                    // 左箭头（禁用）
+                    const leftArrow = document.createElement('button');
+                    leftArrow.className = 'wallpaper-pagination-arrow';
+                    leftArrow.disabled = true;
+                    leftArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"></path></svg>';
+                    paginationContainer.appendChild(leftArrow);
+
+                    // 页码信息
+                    const pageInfo = document.createElement('div');
+                    pageInfo.style.cssText = 'color: var(--text-secondary-color); font-size: 14px; margin: 0 8px;';
+                    pageInfo.textContent = `1 / 1`;
+                    paginationContainer.appendChild(pageInfo);
+
+                    // 右箭头（禁用）
+                    const rightArrow = document.createElement('button');
+                    rightArrow.className = 'wallpaper-pagination-arrow';
+                    rightArrow.disabled = true;
+                    rightArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"></path></svg>';
+                    paginationContainer.appendChild(rightArrow);
+                    return;
+                }
+
+                const maxVisiblePages = 10;
+                let startPage = 1;
+                let endPage = this.totalPages;
+
+                // 计算显示的页面范围
+                if (this.totalPages > maxVisiblePages) {
+                    const half = Math.floor(maxVisiblePages / 2);
+                    if (this.currentPage <= half) {
+                        startPage = 1;
+                        endPage = maxVisiblePages;
+                    } else if (this.currentPage >= this.totalPages - half) {
+                        startPage = this.totalPages - maxVisiblePages + 1;
+                        endPage = this.totalPages;
+                    } else {
+                        startPage = this.currentPage - half;
+                        endPage = this.currentPage + half;
+                    }
+                }
+
+                // 左箭头
+                const leftArrow = document.createElement('button');
+                leftArrow.className = 'wallpaper-pagination-arrow';
+                leftArrow.disabled = this.currentPage === 1;
+                leftArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"></path></svg>';
+                leftArrow.addEventListener('click', () => {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.renderWallpapers();
+                        this.renderPagination();
+                        wallpaperGrid.scrollTop = 0;
+                    }
+                });
+                paginationContainer.appendChild(leftArrow);
+
+                // 页码按钮
+                for (let i = startPage; i <= endPage; i++) {
+                    const pageBtn = document.createElement('button');
+                    pageBtn.className = 'wallpaper-pagination-btn';
+                    if (i === this.currentPage) {
+                        pageBtn.classList.add('active');
+                    }
+                    pageBtn.textContent = i;
+                    pageBtn.addEventListener('click', () => {
+                        this.currentPage = i;
+                        this.renderWallpapers();
+                        this.renderPagination();
+                        wallpaperGrid.scrollTop = 0;
+                    });
+                    paginationContainer.appendChild(pageBtn);
+                }
+
+                // 页码信息（显示在页码按钮后）
+                const pageInfo = document.createElement('div');
+                pageInfo.style.cssText = 'color: var(--text-secondary-color); font-size: 14px; margin: 0 8px;';
+                pageInfo.textContent = `${this.currentPage} / ${this.totalPages}`;
+                paginationContainer.appendChild(pageInfo);
+
+                // 右箭头
+                const rightArrow = document.createElement('button');
+                rightArrow.className = 'wallpaper-pagination-arrow';
+                rightArrow.disabled = this.currentPage === this.totalPages;
+                rightArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"></path></svg>';
+                rightArrow.addEventListener('click', () => {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.renderWallpapers();
+                        this.renderPagination();
+                        wallpaperGrid.scrollTop = 0;
+                    }
+                });
+                paginationContainer.appendChild(rightArrow);
+            }
+
+            // 切换数据源
+            switchSource(source) {
+                this.currentSource = source;
+                this.currentPage = 1; // 重置到第一页
+                this.generateWallpapers();
+                this.search(this.searchQuery);
+            }
+        }
+
+        // 初始化壁纸管理器
+        const wallpaperManager = new WallpaperManager();
+        wallpaperManager.generateWallpapers();
+        wallpaperManager.renderWallpapers();
+        wallpaperManager.renderPagination();
+
+        // 关闭窗口
+        closeBtn.addEventListener('click', () => {
+            panel.style.display = 'none';
+        });
+
+        // 导航切换效果
+        document.querySelectorAll('.wallpaper-nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                // 移除所有active状态
+                document.querySelectorAll('.wallpaper-nav-item').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                // 添加active状态到当前项
+                this.classList.add('active');
+                
+                // 更新右侧内容
+                const source = this.dataset.source;
+                if (source !== 'settings') {
+                    wallpaperManager.switchSource(source);
+                } else {
+                    // TODO: 打开设置面板
+                }
+            });
+        });
+
+        // 搜索功能（防抖优化）
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                wallpaperManager.search(e.target.value);
+            }, 300); // 300ms 防抖
+        });
+
+        // 点击缩略图打开窗口内全屏预览
+        wallpaperGrid.addEventListener('click', (e) => {
+            const item = e.target.closest('.wallpaper-item');
+            if (item) {
+                e.preventDefault();
+                
+                const img = item.querySelector('img.loaded');
+                if (img && img.src) {
+                    fullscreenImg.src = img.src;
+                    fullscreenView.classList.add('visible');
+                    downloadBtn.href = img.src;
+                    downloadBtn.download = `wallpaper-${item.dataset.wallpaperId}.jpg`;
+                }
+            }
+        });
+
+        // 关闭全屏预览
+        fullscreenView.addEventListener('click', (e) => {
+            // 如果点击的不是控制按钮和图片，则关闭
+            if (!e.target.closest('.wallpaper-fullscreen-controls')) {
+                fullscreenView.classList.remove('visible');
+            }
+        });
+
+        // 点击图片本身也可以关闭
+        fullscreenImg.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fullscreenView.classList.remove('visible');
+        });
+
+        // 设为背景按钮（测试用）
+        setBgBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            alert('设为背景功能（测试）');
+            // 实际应该调用设置背景的函数
+            fullscreenView.classList.remove('visible');
+        });
+
+    </script>
+</body>
+</html>
