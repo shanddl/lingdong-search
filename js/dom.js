@@ -34,8 +34,6 @@ export const DOMElementsToCache = [
     'nav-context-menu', 'nav-tab-context-menu', 'main-context-menu',
     'nav-groups-list', 'nav-group-form-title', 'add-nav-group-form',
     'nav-group-edit-id', 'nav-group-name-input', 'cancel-nav-group-edit-btn',
-    // [已移除] 旧的外观设置模态框元素
-    // 外观设置已迁移到侧边面板，元素由 effects-panel.js 直接访问
 
     'engine-tab-buttons-container',  // 添加引擎菜单分类标签容器
     'engine-menu-content-container',  // 添加引擎菜单内容容器

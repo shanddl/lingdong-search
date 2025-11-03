@@ -25,14 +25,22 @@ class ErrorHandler {
         this.errorCount = 0;
         this.errorLog = [];
         this.maxLogSize = 50; // 最多保存50条错误日志
+        this.isInitialized = false; // 【修复】标记是否已初始化
+        this.errorHandler = null; // 【修复】保存error事件处理函数引用
+        this.rejectionHandler = null; // 【修复】保存unhandledrejection事件处理函数引用
     }
 
     /**
-     * 初始化全局错误处理器
+     * 初始化全局错误处理器（已优化：防止重复初始化导致监听器累积）
      */
     init() {
-        // 捕获全局未处理的错误
-        window.addEventListener('error', (event) => {
+        // 【修复】如果已初始化，先清理旧的监听器
+        if (this.isInitialized) {
+            this.reset();
+        }
+        
+        // 创建错误处理函数
+        this.errorHandler = (event) => {
             this.handleError({
                 type: ErrorType.RUNTIME,
                 message: event.message,
@@ -42,10 +50,10 @@ class ErrorHandler {
                 error: event.error,
                 timestamp: new Date().toISOString()
             });
-        });
+        };
 
-        // 捕获未处理的Promise拒绝
-        window.addEventListener('unhandledrejection', (event) => {
+        // 创建Promise拒绝处理函数
+        this.rejectionHandler = (event) => {
             this.handleError({
                 type: ErrorType.PROMISE,
                 message: event.reason?.message || event.reason || 'Unhandled Promise Rejection',
@@ -55,9 +63,36 @@ class ErrorHandler {
             
             // 阻止默认的控制台错误输出
             event.preventDefault();
-        });
+        };
 
+        // 捕获全局未处理的错误
+        window.addEventListener('error', this.errorHandler);
+        // 捕获未处理的Promise拒绝
+        window.addEventListener('unhandledrejection', this.rejectionHandler);
+
+        this.isInitialized = true;
         logger.info('全局错误处理器已初始化');
+    }
+    
+    /**
+     * 【新增】重置错误处理器状态（用于页面刷新时）
+     * 移除事件监听器并重置内部状态
+     */
+    reset() {
+        // 【修复】移除事件监听器，避免累积
+        if (this.errorHandler) {
+            window.removeEventListener('error', this.errorHandler);
+            this.errorHandler = null;
+        }
+        if (this.rejectionHandler) {
+            window.removeEventListener('unhandledrejection', this.rejectionHandler);
+            this.rejectionHandler = null;
+        }
+        
+        // 重置内部状态
+        this.errorCount = 0;
+        this.errorLog = [];
+        this.isInitialized = false;
     }
 
     /**

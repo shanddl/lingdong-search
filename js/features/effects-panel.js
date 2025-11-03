@@ -1,5 +1,14 @@
 // 外观设置面板管理（优化版）
 
+import { Formatter } from '../utils/formatter.js';
+import { DOMHelper } from '../utils/domHelper.js';
+import { ButtonGroupHelper } from '../utils/buttonGroupHelper.js';
+import { iconPreviewHelper } from '../utils/iconHelper.js';
+import { timerManager } from '../utils/timerManager.js';
+import { eventManager } from '../eventManager.js';
+import { state } from '../state.js';
+import { core } from '../core.js';
+
 /**
  * 滑块配置
  * 统一管理所有滑块的配置信息
@@ -12,7 +21,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-overlay',
             cssVar: '--overlay-opacity',
             storageKey: 'wallpaperEffects.overlayOpacity',
-            format: (v) => `${v}%`,
+            format: (v) => Formatter.percentage(v, 0),
             toCSS: (v) => v / 100,
         },
         {
@@ -20,7 +29,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-search-bg',
             cssVar: '--search-bg-opacity',
             storageKey: 'wallpaperEffects.searchBgOpacity',
-            format: (v) => `${v}%`,
+            format: (v) => Formatter.percentage(v, 0),
             toCSS: (v) => v / 100,
             applyFn: (value) => {
                 // 动态调整搜索框文字和按钮颜色
@@ -50,7 +59,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-search-blur',
             cssVar: '--search-blur',
             storageKey: 'wallpaperEffects.searchBlur',
-            format: (v) => `${v}px`,
+            format: (v) => Formatter.pixels(v),
             toCSS: (v) => `${v}px`,
         },
         {
@@ -58,7 +67,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-search-border',
             cssVar: '--search-border-opacity',
             storageKey: 'wallpaperEffects.searchBorderOpacity',
-            format: (v) => `${v}%`,
+            format: (v) => Formatter.percentage(v, 0),
             toCSS: (v) => v / 100,
         },
         {
@@ -66,7 +75,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-icon-bg',
             cssVar: '--icon-bg-opacity',
             storageKey: 'wallpaperEffects.iconBgOpacity',
-            format: (v) => `${v}%`,
+            format: (v) => Formatter.percentage(v, 0),
             toCSS: (v) => v / 100,
         },
         {
@@ -74,7 +83,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-icon-blur',
             cssVar: '--icon-blur',
             storageKey: 'wallpaperEffects.iconBlur',
-            format: (v) => `${v}px`,
+            format: (v) => Formatter.pixels(v),
             toCSS: (v) => `${v}px`,
         },
         {
@@ -82,33 +91,33 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-text-shadow',
             cssVar: '--text-shadow-opacity',
             storageKey: 'wallpaperEffects.textShadowOpacity',
-            format: (v) => `${v}%`,
+            format: (v) => Formatter.percentage(v, 0),
             toCSS: (v) => v / 100,
         },
     ],
     
-    // 搜索框滑块
+    // 搜索框滑块（使用模块导入的core，避免window全局变量）
     searchbox: [
         {
             id: 'position-slider',
             valueId: 'effects-val-pos',
             storageKey: 'searchboxTop',
-            format: (v) => `${v}%`,
-            applyFn: (value) => window.core?.applySearchboxPosition(value),
+            format: (v) => Formatter.percentage(v, 0),
+            applyFn: (value) => core.applySearchboxPosition(value),
         },
         {
             id: 'width-slider',
             valueId: 'effects-val-width',
             storageKey: 'searchboxWidth',
-            format: (v) => `${v}px`,
-            applyFn: (value) => window.core?.applySearchboxWidth(value),
+            format: (v) => Formatter.pixels(v),
+            applyFn: (value) => core.applySearchboxWidth(value),
         },
         {
             id: 'scope-width-slider',
             valueId: 'effects-val-scope',
             storageKey: 'scopeMenuWidth',
-            format: (v) => `${v}px`,
-            applyFn: (value) => window.core?.applyScopeMenuWidth(value),
+            format: (v) => Formatter.pixels(v),
+            applyFn: (value) => core.applyScopeMenuWidth(value),
         },
     ],
     
@@ -118,7 +127,7 @@ const SLIDER_CONFIG = {
             id: 'nav-item-size-slider',
             valueId: 'effects-val-size',
             storageKey: 'navigationItemSize',
-            format: (v) => `${v}px`,
+            format: (v) => Formatter.pixels(v),
             applyFn: (value, state) => {
                 const gap = state?.userData?.navigationGridGap;
                 window.navigationModule?.utils?.applyAppearanceSettings(value, gap);
@@ -128,7 +137,7 @@ const SLIDER_CONFIG = {
             id: 'nav-grid-gap-slider',
             valueId: 'effects-val-gap',
             storageKey: 'navigationGridGap',
-            format: (v) => `${v}px`,
+            format: (v) => Formatter.pixels(v),
             applyFn: (value, state) => {
                 const size = state?.userData?.navigationItemSize;
                 window.navigationModule?.utils?.applyAppearanceSettings(size, value);
@@ -138,7 +147,7 @@ const SLIDER_CONFIG = {
             id: 'nav-min-width-slider',
             valueId: 'effects-val-min',
             storageKey: 'navigationSettings.minWidth',
-            format: (v) => `${v}px`,
+            format: (v) => Formatter.pixels(v),
             applyFn: (value) => {
                 const navGrid = document.getElementById('navigation-grid');
                 navGrid?.style.setProperty('--nav-item-min-width', `${value}px`);
@@ -149,7 +158,7 @@ const SLIDER_CONFIG = {
             valueId: 'effects-val-dock',
             cssVar: '--dock-scale',
             storageKey: 'dockSettings.scale',
-            format: (v) => `${v.toFixed(1)}x`,
+            format: (v) => Formatter.decimal(v, 1) + 'x',
             toCSS: (v) => v,
         },
     ],
@@ -163,9 +172,31 @@ class EffectsPanel {
         this.panel = document.getElementById('effectsSettingsPanel');
         this.overlay = document.getElementById('effectsPanelOverlay');
         this.settingsLoaded = false;
-        // 【内存优化】CSS变量更新节流控制
-        this._cssVarUpdateTimer = null;
+        // 【内存优化】CSS变量更新节流控制（使用timerManager统一管理）
         this._pendingCssVars = new Map(); // 存储待更新的CSS变量
+        
+        // 【P0内存优化】防止重复绑定的标志
+        this._bindedAccordion = false;
+        this._bindedTabs = false;
+        this._bindedSliders = false;
+        this._bindedButtons = false;
+        
+        // 【P0内存优化】记录已渲染的accordion，防止重复渲染
+        this._renderedAccordions = new Set();
+        
+        // Tab切换状态
+        this._currentActiveTab = null;
+        
+        // Tab切换事件ID（用于清理）
+        this._tabEventIds = [];
+        
+        // 【P0内存优化】Accordion、Slider、Button事件ID（用于清理）
+        this._accordionEventIds = [];
+        this._sliderEventIds = [];
+        this._buttonEventIds = [];
+        
+        // 【P0内存优化】动态导入Promise引用，用于取消未完成的渲染
+        this._pendingRenders = new Map(); // accordionType -> AbortController
         
         this.init();
     }
@@ -180,48 +211,63 @@ class EffectsPanel {
         this.loadPanelPosition(); // 加载保存的面板位置
         // 注意：applySavedCSSVariables 在 core.applyAllSettings 中调用（数据加载完成后）
         
-        // ESC键关闭 - 使用具名函数以便后续移除，防止内存泄漏
+        // ESC键关闭 - 使用eventManager统一管理，防止内存泄漏
         this.handleEscKey = (e) => {
             if (e.key === 'Escape' && this.panel.classList.contains('visible')) {
                 this.closePanel();
             }
         };
-        document.addEventListener('keydown', this.handleEscKey);
+        this._escKeyEventId = eventManager.add(document, 'keydown', this.handleEscKey);
     }
     
     /**
      * 恢复事件监听器（在openPanel中调用，确保监听器已绑定）
+     * 注意：由于现在使用eventManager统一管理，大部分监听器不需要手动恢复
+     * 但ESC键和遮罩层点击需要确保已绑定
      */
     restoreEventListeners() {
-        // 检查并重新绑定事件监听器（如果之前被移除）
-        // ESC键监听器
-        if (this.handleEscKey) {
-            // 先尝试移除（防止重复绑定）
-            document.removeEventListener('keydown', this.handleEscKey);
-            document.addEventListener('keydown', this.handleEscKey);
+        // ESC键监听器（如果不存在则重新绑定）
+        if (this.handleEscKey && !this._escKeyEventId) {
+            this._escKeyEventId = eventManager.add(document, 'keydown', this.handleEscKey);
         }
-        // 遮罩层点击监听器
-        if (this.handleOverlayClick) {
-            this.overlay.removeEventListener('click', this.handleOverlayClick);
-            this.overlay.addEventListener('click', this.handleOverlayClick);
-        }
-        // 恢复拖动功能的文档级监听器（如果存在）
-        // cleanupResize 会移除 mousemove 和 mouseup，但不会移除 handleMouseDown（它在 handle 元素上）
-        // 这里恢复文档级的监听器，确保拖动功能正常工作
-        if (this.handleMouseMove && this.handleMouseUp) {
-            // 先移除（防止重复绑定）
-            document.removeEventListener('mousemove', this.handleMouseMove);
-            document.removeEventListener('mouseup', this.handleMouseUp);
-            // 重新绑定
-            document.addEventListener('mousemove', this.handleMouseMove);
-            document.addEventListener('mouseup', this.handleMouseUp);
+        // 遮罩层点击监听器（如果不存在则重新绑定）
+        if (this.handleOverlayClick && !this._overlayClickEventId) {
+            this._overlayClickEventId = eventManager.add(this.overlay, 'click', this.handleOverlayClick);
         }
         // 注意：bindAccordion、bindTabs、bindSliders、bindButtons 使用的是直接绑定
         // 它们的监听器绑定在DOM元素上，如果元素不被移除，监听器不会被累积
         // 因此这里不需要恢复（因为它们从未被移除）
+        // 拖拽相关的监听器由cleanupResize管理，这里不需要处理
     }
     
     openPanel() {
+        // 【内存优化】如果面板正在延迟清理，取消清理（用户快速重新打开了）
+        timerManager.clearTimeout('effectsPanelDelayedCleanup');
+        
+        // 【P0内存优化】打开面板时，立即清理所有非活动Tab的内容（确保干净状态）
+        const activeTab = state?.userData?.panelSettings?.activeTab || 'appearance';
+        const allTabs = ['appearance', 'search', 'navigation', 'system'];
+        allTabs.forEach(tabName => {
+            if (tabName !== activeTab) {
+                // 取消该Tab的所有pending渲染
+                const tabContent = this.panel.querySelector(`[data-tab-content="${tabName}"]`);
+                if (tabContent && this._pendingRenders) {
+                    const accordions = tabContent.querySelectorAll('.effects-accordion-item[data-accordion]');
+                    accordions.forEach(accordion => {
+                        const accordionType = accordion.dataset.accordion;
+                        if (accordionType && this._pendingRenders.has(accordionType)) {
+                            const abortController = this._pendingRenders.get(accordionType);
+                            if (abortController) {
+                                abortController.abort();
+                            }
+                            this._pendingRenders.delete(accordionType);
+                        }
+                    });
+                }
+                this._cleanupTabContent(tabName);
+            }
+        });
+        
         if (!this.settingsLoaded) {
             this.loadSliderValues();
             this.loadPanelTheme();
@@ -250,8 +296,8 @@ class EffectsPanel {
     }
     
     loadPanelTheme() {
-        // 从state中读取保存的主题
-        const savedTheme = window.state?.userData?.panelSettings?.theme || 'light';
+        // 从state中读取保存的主题（使用模块导入的state）
+        const savedTheme = state?.userData?.panelSettings?.theme || 'light';
         
         // 应用主题
         if (savedTheme === 'dark') {
@@ -271,8 +317,8 @@ class EffectsPanel {
     }
     
     loadActiveTab() {
-        // 从state中读取保存的Tab
-        const savedTab = window.state?.userData?.panelSettings?.activeTab || 'appearance';
+        // 从state中读取保存的Tab（使用模块导入的state）
+        const savedTab = state?.userData?.panelSettings?.activeTab || 'appearance';
         
         // 切换到保存的Tab
         this.switchTab(savedTab);
@@ -283,40 +329,91 @@ class EffectsPanel {
         this.panel.classList.remove('visible');
         this.overlay.classList.remove('visible');
         document.body.style.overflow = '';
-
+        
         // 2) 立即停止面板专属的全局/文档级监听（拖拽）
         if (typeof this.cleanupResize === 'function') {
             try { this.cleanupResize(); } catch (e) { /* noop */ }
         }
         
-        // 2.5) 【内存优化】移除所有事件监听器，防止内存泄漏
+        // 2.5) 【内存优化】移除所有事件监听器，防止内存泄漏（使用eventManager统一管理）
         try {
             // 移除ESC键监听器
-            if (this.handleEscKey) {
-                document.removeEventListener('keydown', this.handleEscKey);
+            if (this._escKeyEventId) {
+                eventManager.remove(this._escKeyEventId);
+                this._escKeyEventId = null;
             }
             // 移除遮罩层点击监听器
-            if (this.handleOverlayClick) {
-                this.overlay.removeEventListener('click', this.handleOverlayClick);
+            if (this._overlayClickEventId) {
+                eventManager.remove(this._overlayClickEventId);
+                this._overlayClickEventId = null;
             }
-            // 清理CSS变量更新定时器
-            if (this._cssVarUpdateTimer) {
-                clearTimeout(this._cssVarUpdateTimer);
-                this._cssVarUpdateTimer = null;
+            // 【P0内存优化】移除Tab切换事件监听器
+            this._tabEventIds.forEach(id => {
+                if (id) eventManager.remove(id);
+            });
+            this._tabEventIds = [];
+            
+            // 【P0内存优化】移除Accordion事件监听器
+            this._accordionEventIds.forEach(id => {
+                if (id) eventManager.remove(id);
+            });
+            this._accordionEventIds = [];
+            
+            // 【P0内存优化】移除Slider事件监听器
+            this._sliderEventIds.forEach(id => {
+                if (id) eventManager.remove(id);
+            });
+            this._sliderEventIds = [];
+            
+            // 【P0内存优化】移除Button事件监听器
+            this._buttonEventIds.forEach(id => {
+                if (id) eventManager.remove(id);
+            });
+            this._buttonEventIds = [];
+            
+            // 【P0内存优化】取消所有待执行的渲染Promise
+            if (this._pendingRenders) {
+                this._pendingRenders.forEach((abortController, accordionType) => {
+                    if (abortController) {
+                        abortController.abort();
+                    }
+                });
+                this._pendingRenders.clear();
             }
+            
+            // 清理所有相关定时器（使用timerManager）
+            timerManager.clearTimeout('cssVarUpdate');
+            timerManager.clearTimeout('effectsPanelCleanup');
+            timerManager.clearTimeout('effectsPanelIdleCleanup');
+            // 取消之前的延迟清理（如果面板被快速重新打开）
+            timerManager.clearTimeout('effectsPanelDelayedCleanup');
+            
             // 清空待更新的CSS变量
             if (this._pendingCssVars) {
                 this._pendingCssVars.clear();
             }
-            // 注意：bindAccordion、bindTabs、bindSliders、bindButtons 使用的是直接绑定
+            
+            // 【内存优化】延迟3秒后清理Tab内容（如果用户没有重新打开面板）
+            // 这样可以避免用户快速重新打开时的重复渲染开销
+            timerManager.setTimeout('effectsPanelDelayedCleanup', () => {
+                // 检查面板是否仍然关闭（用户可能已经重新打开了）
+                if (!this.panel.classList.contains('visible')) {
+                    this._cleanupAllTabContents();
+                }
+            }, 3000); // 3秒延迟
+            
+            // 重置状态
+            this._currentActiveTab = null;
+            
+            // 注意：bindAccordion、bindSliders、bindButtons 使用的是直接绑定
             // 它们的监听器绑定在DOM元素上，只要元素不被移除，就不会累积
             // 因此这里不需要移除（这些元素不会被移除）
         } catch (e) {
             console.warn('[Effects Panel] Error removing event listeners:', e);
         }
 
-        // 3) 动画结束后（约300-500ms），清理重内容与预览引用
-        setTimeout(() => {
+        // 3) 动画结束后（约300-500ms），清理重内容与预览引用（使用timerManager统一管理）
+        timerManager.setTimeout('effectsPanelCleanup', () => {
             try {
                 // 折叠所有手风琴，减少常驻DOM
                 this.panel.querySelectorAll('.effects-accordion-item.expanded')
@@ -352,6 +449,9 @@ class EffectsPanel {
                 // 【内存优化】设置display:none以彻底释放内存
                 this.panel.style.display = 'none';
                 
+                // 【P0内存优化】重置已渲染标志，允许下次重新渲染
+                this._renderedAccordions.clear();
+                
                 // 强制垃圾回收提示（如果可用）
                 if (typeof requestIdleCallback === 'function') {
                     requestIdleCallback(() => {
@@ -378,14 +478,16 @@ class EffectsPanel {
         if (typeof requestIdleCallback === 'function') {
             requestIdleCallback(idleCleanup, { timeout: 1500 });
         } else {
-            setTimeout(idleCleanup, 1500);
+            // 使用timerManager统一管理定时器
+            timerManager.setTimeout('effectsPanelIdleCleanup', idleCleanup, 1500);
         }
     }
     
     bindPanelEvents() {
         // 只通过遮罩层关闭 - 使用具名函数以便后续移除
         this.handleOverlayClick = () => this.closePanel();
-        this.overlay.addEventListener('click', this.handleOverlayClick);
+        // 使用eventManager统一管理遮罩层点击监听器
+        this._overlayClickEventId = eventManager.add(this.overlay, 'click', this.handleOverlayClick);
         
         // 绑定拖动调整宽度功能
         this.bindResizeHandle();
@@ -478,47 +580,89 @@ class EffectsPanel {
         this.handleMouseMove = handleMouseMove;
         this.handleMouseUp = handleMouseUp;
         
-        // 绑定事件
-        handle.addEventListener('mousedown', this.handleMouseDown);
-        document.addEventListener('mousemove', this.handleMouseMove);
-        document.addEventListener('mouseup', this.handleMouseUp);
+        // 绑定事件（使用eventManager统一管理，避免内存泄漏）
+        this._resizeMouseDownId = eventManager.add(handle, 'mousedown', this.handleMouseDown);
+        this._resizeMouseMoveId = eventManager.add(document, 'mousemove', this.handleMouseMove);
+        this._resizeMouseUpId = eventManager.add(document, 'mouseup', this.handleMouseUp);
         
         // 保存handle引用以便清理
         this.resizeHandle = handle;
         
-        // 清理函数（移除所有拖动相关监听器）
+        // 清理函数（移除所有拖动相关监听器，使用eventManager统一管理）
         this.cleanupResize = () => {
-            if (this.resizeHandle && this.handleMouseDown) {
-                this.resizeHandle.removeEventListener('mousedown', this.handleMouseDown);
+            if (this._resizeMouseDownId) {
+                eventManager.remove(this._resizeMouseDownId);
+                this._resizeMouseDownId = null;
             }
-            if (this.handleMouseMove) {
-                document.removeEventListener('mousemove', this.handleMouseMove);
+            if (this._resizeMouseMoveId) {
+                eventManager.remove(this._resizeMouseMoveId);
+                this._resizeMouseMoveId = null;
             }
-            if (this.handleMouseUp) {
-                document.removeEventListener('mouseup', this.handleMouseUp);
+            if (this._resizeMouseUpId) {
+                eventManager.remove(this._resizeMouseUpId);
+                this._resizeMouseUpId = null;
             }
         };
     }
     
     /**
-     * 绑定Tab切换事件
+     * 绑定Tab切换事件（已优化：使用eventManager统一管理，避免内存泄漏）
      */
     bindTabs() {
-        const tabs = this.panel.querySelectorAll('.effects-tab');
+        // 【P0内存优化】防止重复绑定
+        if (this._bindedTabs) {
+            return;
+        }
         
+        // 【内存优化】清理旧的事件监听器（如果存在）
+        this._tabEventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this._tabEventIds = [];
+        
+        // 使用eventManager统一管理事件，避免内存泄漏
+        const tabs = this.panel.querySelectorAll('.effects-tab');
         tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
+            const eventId = eventManager.add(tab, 'click', () => {
                 const tabName = tab.dataset.tab;
                 this.switchTab(tabName);
             });
+            this._tabEventIds.push(eventId);
         });
+        
+        this._bindedTabs = true;
     }
     
     /**
-     * 切换Tab
+     * 切换Tab（已优化：立即清理非活动Tab的内容，防止内存泄漏）
      * @param {string} tabName - Tab名称（appearance, search, navigation, system）
      */
     switchTab(tabName) {
+        // 如果切换到相同的Tab，直接返回
+        if (this._currentActiveTab === tabName) {
+            return;
+        }
+        
+        // 【P0内存优化】立即清理之前Tab的内容（如果存在）
+        if (this._currentActiveTab) {
+            // 取消该Tab相关的所有pending渲染Promise
+            const previousTabContent = this.panel.querySelector(`[data-tab-content="${this._currentActiveTab}"]`);
+            if (previousTabContent && this._pendingRenders) {
+                const accordions = previousTabContent.querySelectorAll('.effects-accordion-item[data-accordion]');
+                accordions.forEach(accordion => {
+                    const accordionType = accordion.dataset.accordion;
+                    if (accordionType && this._pendingRenders.has(accordionType)) {
+                        const abortController = this._pendingRenders.get(accordionType);
+                        if (abortController) {
+                            abortController.abort();
+                        }
+                        this._pendingRenders.delete(accordionType);
+                    }
+                });
+            }
+            this._cleanupTabContent(this._currentActiveTab);
+        }
+        
         // 更新Tab按钮状态
         this.panel.querySelectorAll('.effects-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.tab === tabName);
@@ -530,92 +674,489 @@ class EffectsPanel {
         });
         
         // 保存当前Tab到userData
-        if (window.state?.userData?.panelSettings) {
-            window.state.userData.panelSettings.activeTab = tabName;
+        if (state?.userData?.panelSettings) {
+            state.userData.panelSettings.activeTab = tabName;
         }
+        
+        this._currentActiveTab = tabName;
     }
     
     /**
-     * 绑定折叠菜单事件（算盘珠效果）
+     * 【P0内存优化】清理指定Tab的内容，释放内存
+     * @param {string} tabName - 要清理的Tab名称
+     */
+    _cleanupTabContent(tabName) {
+        const tabContent = this.panel.querySelector(`[data-tab-content="${tabName}"]`);
+        if (!tabContent) return;
+        
+        // 清理所有列表内容（最占内存的部分）
+        const listSelectors = ['#engine-list', '#scope-list', '#ai-list', '#nav-group-list', '#manage-scopes-list'];
+        listSelectors.forEach(selector => {
+            const list = tabContent.querySelector(selector);
+            if (list && list.children.length > 0) {
+                // 清理列表中的图片和Blob URL
+                const listImages = list.querySelectorAll('img');
+                listImages.forEach(img => {
+                    if (img.src && img.src.startsWith('blob:')) {
+                        try {
+                            URL.revokeObjectURL(img.src);
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
+                    img.src = '';
+                    img.removeAttribute('src');
+                    img.removeAttribute('srcset');
+                    img.onload = null;
+                    img.onerror = null;
+                });
+                // 清空列表内容
+                list.innerHTML = '';
+            }
+        });
+        
+        // 清理所有图片资源（包括预览图）
+        const images = tabContent.querySelectorAll('img');
+        images.forEach(img => {
+            if (img.src && !img.src.startsWith('data:')) {
+                if (img.src.startsWith('blob:')) {
+                    try {
+                        URL.revokeObjectURL(img.src);
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                img.src = '';
+                img.removeAttribute('src');
+                img.removeAttribute('srcset');
+                img.onload = null;
+                img.onerror = null;
+            }
+        });
+        
+        // 折叠该Tab内的所有Accordion，并清理已渲染标记和pending渲染
+        const accordions = tabContent.querySelectorAll('.effects-accordion-item[data-accordion]');
+        accordions.forEach(accordion => {
+            const accordionType = accordion.dataset.accordion;
+            if (accordionType) {
+                // 取消该accordion的pending渲染Promise
+                if (this._pendingRenders && this._pendingRenders.has(accordionType)) {
+                    const abortController = this._pendingRenders.get(accordionType);
+                    if (abortController) {
+                        abortController.abort();
+                    }
+                    this._pendingRenders.delete(accordionType);
+                }
+                // 如果已展开，清理其内容
+                if (accordion.classList.contains('expanded')) {
+                    accordion.classList.remove('expanded');
+                    // 清理该accordion内的图片资源
+                    const accordionImages = accordion.querySelectorAll('img');
+                    accordionImages.forEach(img => {
+                        if (img.src && !img.src.startsWith('data:')) {
+                            if (img.src.startsWith('blob:')) {
+                                try {
+                                    URL.revokeObjectURL(img.src);
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                            img.src = '';
+                            img.removeAttribute('src');
+                            img.removeAttribute('srcset');
+                            img.onload = null;
+                            img.onerror = null;
+                        }
+                    });
+                    // 清理列表内容（如果存在）
+                    const listSelectors = {
+                        'scope-management': '#scope-list',
+                        'engine-management': '#engine-list',
+                        'ai-management': '#ai-list',
+                        'nav-group-management': '#nav-group-list'
+                    };
+                    const listSelector = listSelectors[accordionType];
+                    if (listSelector) {
+                        const list = accordion.querySelector(listSelector);
+                        if (list) {
+                            list.innerHTML = '';
+                        }
+                    }
+                }
+                this._renderedAccordions.delete(accordionType);
+            }
+        });
+        
+        // 内存清理完成（生产环境静默）
+    }
+    
+    /**
+     * 【新增】清理所有Tab内容，释放内存（延迟清理，在关闭面板3秒后执行）
+     */
+    _cleanupAllTabContents() {
+        const tabContents = this.panel.querySelectorAll('.effects-tab-content');
+        
+        tabContents.forEach(content => {
+            const tabName = content.dataset.tabContent;
+            if (!tabName) return;
+            
+            // 清理列表内容（最占内存的部分）
+            const listSelectors = ['#engine-list', '#scope-list', '#ai-list', '#nav-group-list', '#manage-scopes-list'];
+            listSelectors.forEach(selector => {
+                const list = content.querySelector(selector);
+                if (list && list.children.length > 0) {
+                    // 清理列表中的图片和Blob URL
+                    const listImages = list.querySelectorAll('img');
+                    listImages.forEach(img => {
+                        if (img.src && img.src.startsWith('blob:')) {
+                            try {
+                                URL.revokeObjectURL(img.src);
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                        img.src = '';
+                        img.removeAttribute('src');
+                        img.removeAttribute('srcset');
+                        img.onload = null;
+                        img.onerror = null;
+                    });
+                    // 清空列表内容
+                    list.innerHTML = '';
+                }
+            });
+            
+            // 清理其他图片资源（包括预览图）
+            const images = content.querySelectorAll('img');
+            images.forEach(img => {
+                if (img.src && !img.src.startsWith('data:')) {
+                    if (img.src.startsWith('blob:')) {
+                        try {
+                            URL.revokeObjectURL(img.src);
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
+                    img.src = '';
+                    img.removeAttribute('src');
+                    img.removeAttribute('srcset');
+                    img.onload = null;
+                    img.onerror = null;
+                }
+            });
+            
+            // 折叠所有Accordion
+            const accordions = content.querySelectorAll('.effects-accordion-item.expanded');
+            accordions.forEach(accordion => {
+                const accordionType = accordion.dataset.accordion;
+                accordion.classList.remove('expanded');
+                if (accordionType) {
+                    this._renderedAccordions.delete(accordionType);
+                }
+            });
+        });
+        
+        // 内存清理完成（生产环境静默）
+    }
+    
+    /**
+     * 绑定折叠菜单事件（算盘珠效果）- 已优化：使用eventManager统一管理，避免内存泄漏
      */
     bindAccordion() {
+        // 【P0内存优化】防止重复绑定
+        if (this._bindedAccordion) {
+            return;
+        }
+        
+        // 【P0内存优化】清理旧的事件监听器（如果存在）
+        this._accordionEventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this._accordionEventIds = [];
+        
         const accordionItems = this.panel.querySelectorAll('.effects-accordion-item');
         
         accordionItems.forEach(item => {
             const header = item.querySelector('.effects-accordion-header');
+            if (!header) return;
             
-            header.addEventListener('click', () => {
+            // 【P0内存优化】使用eventManager统一管理，避免内存泄漏
+            const eventId = eventManager.add(header, 'click', () => {
                 const isExpanded = item.classList.contains('expanded');
                 const accordionType = item.dataset.accordion;
                 
                 if (isExpanded) {
+                    // 【P0内存优化】折叠时清理该accordion内的图片资源
+                    const images = item.querySelectorAll('img');
+                    images.forEach(img => {
+                        if (img.src && !img.src.startsWith('data:')) {
+                            // 如果是blob URL，先释放它
+                            if (img.src.startsWith('blob:')) {
+                                try {
+                                    URL.revokeObjectURL(img.src);
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                            // 清空src和相关属性
+                            img.src = '';
+                            img.removeAttribute('src');
+                            img.removeAttribute('srcset');
+                        }
+                    });
+                    // 从已渲染集合中移除，允许下次重新渲染
+                    this._renderedAccordions.delete(accordionType);
                     // 如果已展开，则收起
                     item.classList.remove('expanded');
                 } else {
-                    // 关闭所有其他项
+                    // 【P0内存优化】关闭所有其他项时，取消它们的渲染Promise并清理资源
                     accordionItems.forEach(otherItem => {
+                        // 关闭其他项时也清理图片资源
+                        if (otherItem.classList.contains('expanded')) {
+                            const otherType = otherItem.dataset.accordion;
+                            
+                            // 【P0内存优化】取消该accordion的渲染Promise（如果存在）
+                            if (this._pendingRenders && this._pendingRenders.has(otherType)) {
+                                const abortController = this._pendingRenders.get(otherType);
+                                if (abortController) {
+                                    abortController.abort();
+                                }
+                                this._pendingRenders.delete(otherType);
+                            }
+                            
+                            const otherImages = otherItem.querySelectorAll('img');
+                            otherImages.forEach(img => {
+                                if (img.src && !img.src.startsWith('data:')) {
+                                    if (img.src.startsWith('blob:')) {
+                                        try {
+                                            URL.revokeObjectURL(img.src);
+                                        } catch (e) {
+                                            // ignore
+                                        }
+                                    }
+                                    img.src = '';
+                                    img.removeAttribute('src');
+                                    img.removeAttribute('srcset');
+                                    img.onload = null;
+                                    img.onerror = null;
+                                }
+                            });
+                            
+                            // 【P0内存优化】清理其他accordion的列表内容（如果存在）
+                            const listSelectors = {
+                                'scope-management': '#scope-list',
+                                'engine-management': '#engine-list',
+                                'ai-management': '#ai-list',
+                                'nav-group-management': '#nav-group-list'
+                            };
+                            const listSelector = listSelectors[otherType];
+                            if (listSelector) {
+                                const list = otherItem.querySelector(listSelector);
+                                if (list) {
+                                    // 清理列表中的图片和Blob URL
+                                    const listImages = list.querySelectorAll('img');
+                                    listImages.forEach(img => {
+                                        if (img.src && !img.src.startsWith('data:')) {
+                                            if (img.src.startsWith('blob:')) {
+                                                try {
+                                                    URL.revokeObjectURL(img.src);
+                                                } catch (e) {
+                                                    // ignore
+                                                }
+                                            }
+                                            img.src = '';
+                                            img.removeAttribute('src');
+                                            img.removeAttribute('srcset');
+                                            img.onload = null;
+                                            img.onerror = null;
+                                        }
+                                    });
+                                    // 清空列表
+                                    list.innerHTML = '';
+                                }
+                            }
+                            
+                            this._renderedAccordions.delete(otherType);
+                        }
                         otherItem.classList.remove('expanded');
                     });
                     
                     // 展开当前项
                     item.classList.add('expanded');
                     
-                    // 延迟后渲染对应的数据
-                    console.log('[Effects Panel] Accordion expanded:', accordionType);
-                    setTimeout(() => {
+                    // 延迟后渲染对应的数据（使用timerManager统一管理，添加防抖避免频繁切换）
+                    // 【内存优化】清理之前的渲染定时器，避免多个定时器同时执行导致内存占用
+                    timerManager.clearTimeout(`accordion-render-${accordionType}`);
+                    timerManager.setTimeout(`accordion-render-${accordionType}`, () => {
                         this.renderAccordionData(accordionType);
                     }, 50);
                 }
             });
+            
+            // 保存事件ID以便后续清理
+            this._accordionEventIds.push(eventId);
         });
+        
+        this._bindedAccordion = true;
     }
     
     renderAccordionData(accordionType) {
-        console.log('[Effects Panel] Rendering data for:', accordionType);
+        // 【P0内存优化】防止重复渲染
+        if (this._renderedAccordions.has(accordionType)) {
+            return;
+        }
+        
+        // 【P0内存优化】取消之前的渲染Promise（如果存在）
+        if (this._pendingRenders.has(accordionType)) {
+            const abortController = this._pendingRenders.get(accordionType);
+            if (abortController) {
+                abortController.abort();
+            }
+            this._pendingRenders.delete(accordionType);
+        }
+        
+        // 【P0内存优化】创建AbortController来标记当前渲染任务
+        const abortController = new AbortController();
+        this._pendingRenders.set(accordionType, abortController);
+        
+        // 【P0内存优化】渲染前先清理旧的DOM内容和图片资源
+        const listSelectors = {
+            'scope-management': '#scope-list',
+            'engine-management': '#engine-list',
+            'ai-management': '#ai-list',
+            'nav-group-management': '#nav-group-list'
+        };
+        
+        const listSelector = listSelectors[accordionType];
+        if (listSelector) {
+            const listElement = this.panel.querySelector(listSelector);
+            if (listElement) {
+                // 清理旧的图片资源（blob URL）
+                const oldImages = listElement.querySelectorAll('img');
+                oldImages.forEach(img => {
+                    if (img.src && !img.src.startsWith('data:')) {
+                        if (img.src.startsWith('blob:')) {
+                            try {
+                                URL.revokeObjectURL(img.src);
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                        img.src = '';
+                        img.removeAttribute('src');
+                        img.removeAttribute('srcset');
+                    }
+                });
+                // 清空内容（会在渲染函数中重新填充）
+                listElement.innerHTML = '';
+            }
+        }
         
         // 动态导入并调用对应的渲染函数
         switch(accordionType) {
             case 'scope-management':
                 import('../ui/render.js').then(module => {
-                    console.log('[Effects Panel] Rendering scope management');
+                    // 【P0内存优化】检查是否已被取消
+                    if (abortController.signal.aborted) return;
                     module.render.scopeManagementModal();
-                    import('./managementHandlers.js').then(m => m.managementHandlers.showScopeList());
+                    return import('./managementHandlers.js');
+                }).then(m => {
+                    // 【P0内存优化】检查是否已被取消
+                    if (abortController.signal.aborted) return;
+                    m.managementHandlers.showScopeList();
+                    // 【P0内存优化】标记为已渲染，清理pending状态
+                    this._renderedAccordions.add(accordionType);
+                    this._pendingRenders.delete(accordionType);
+                }).catch(error => {
+                    // 如果是取消操作，不输出错误
+                    if (abortController.signal.aborted) return;
+                    console.error('[Effects Panel] Failed to render scope-management:', error);
+                    this._renderedAccordions.delete(accordionType);
+                    this._pendingRenders.delete(accordionType);
                 });
                 break;
             case 'engine-management':
                 import('../ui/render.js').then(module => {
-                    console.log('[Effects Panel] Rendering engine management');
+                    if (abortController.signal.aborted) return;
                     module.render.engineManagementModal();
-                    import('./managementHandlers.js').then(m => {
-                        m.managementHandlers.resetEngineForm();
-                        // 重新绑定图标预览功能
-                        this.bindEngineIconPreview();
-                        // 渲染完成后标注重内容与预览
-                        this.markHeavyContent();
-                    });
+                    return import('./managementHandlers.js');
+                }).then(m => {
+                    if (abortController.signal.aborted) return;
+                    m.managementHandlers.resetEngineForm();
+                    // 重新绑定图标预览功能
+                    this.bindEngineIconPreview();
+                    // 渲染完成后标注重内容与预览
+                    this.markHeavyContent();
+                    // 【P0内存优化】标记为已渲染，清理pending状态
+                    this._renderedAccordions.add(accordionType);
+                    this._pendingRenders.delete(accordionType);
+                }).catch(error => {
+                    if (abortController.signal.aborted) return;
+                    console.error('[Effects Panel] Failed to render engine-management:', error);
+                    this._renderedAccordions.delete(accordionType);
+                    this._pendingRenders.delete(accordionType);
                 });
                 break;
             case 'ai-management':
                 import('./ai-settings.js').then(module => {
-                    console.log('[Effects Panel] Rendering AI management');
+                    if (abortController.signal.aborted) return;
                     module.aiSettings.renderAIList();
                     module.aiSettings.resetForm();
                     // 渲染完成后标注
                     this.markHeavyContent();
+                    // 【P0内存优化】标记为已渲染，清理pending状态
+                    this._renderedAccordions.add(accordionType);
+                    this._pendingRenders.delete(accordionType);
+                }).catch(error => {
+                    if (abortController.signal.aborted) return;
+                    console.error('[Effects Panel] Failed to render ai-management:', error);
+                    this._renderedAccordions.delete(accordionType);
+                    this._pendingRenders.delete(accordionType);
                 });
                 break;
             case 'nav-group-management':
                 import('./navigation.js').then(module => {
-                    console.log('[Effects Panel] Rendering nav group management');
+                    if (abortController.signal.aborted) return;
                     module.navigationModule.render.groupManagementModal();
                     module.navigationModule.handlers.onCancelGroupEdit();
                     // 渲染完成后标注
                     this.markHeavyContent();
+                    // 【P0内存优化】标记为已渲染，清理pending状态
+                    this._renderedAccordions.add(accordionType);
+                    this._pendingRenders.delete(accordionType);
+                }).catch(error => {
+                    if (abortController.signal.aborted) return;
+                    console.error('[Effects Panel] Failed to render nav-group-management:', error);
+                    this._renderedAccordions.delete(accordionType);
+                    this._pendingRenders.delete(accordionType);
                 });
                 break;
             case 'about':
-                // 更新版本号
-                this.updateVersionInfo();
+                // 更新版本号（如果是异步函数，等待完成）
+                try {
+                    const result = this.updateVersionInfo();
+                    if (result instanceof Promise) {
+                        result.then(() => {
+                            // 【P0内存优化】标记为已渲染
+                            this._renderedAccordions.add(accordionType);
+                        }).catch(error => {
+                            console.error('[Effects Panel] Failed to update version info:', error);
+                            // 即使失败也标记为已渲染，避免重复尝试
+                            this._renderedAccordions.add(accordionType);
+                        });
+                    } else {
+                        // 【P0内存优化】标记为已渲染
+                        this._renderedAccordions.add(accordionType);
+                    }
+                } catch (error) {
+                    console.error('[Effects Panel] Failed to update version info:', error);
+                    // 即使失败也标记为已渲染，避免重复尝试
+                    this._renderedAccordions.add(accordionType);
+                }
+                break;
+            default:
+                // 未知的 accordion 类型，不进行渲染
+                console.warn(`[Effects Panel] Unknown accordion type: ${accordionType}`);
                 break;
         }
     }
@@ -676,84 +1217,36 @@ class EffectsPanel {
     }
     
     /**
-     * 绑定引擎图标预览功能
+     * 绑定引擎图标预览功能（使用iconPreviewHelper统一管理）
      */
     bindEngineIconPreview() {
         const engineIconUrl = document.getElementById('engine-icon-url');
         const engineIconPreview = document.getElementById('engine-icon-preview');
         
         if (engineIconUrl && engineIconPreview) {
-            // 移除旧的事件监听器和定时器（如果存在）
-            const oldListener = engineIconUrl._iconPreviewListener;
-            const oldBlurHandler = engineIconUrl._iconPreviewBlurHandler;
-            const oldTimer = engineIconUrl._iconPreviewTimer;
-            
-            if (oldListener) {
-                engineIconUrl.removeEventListener('input', oldListener);
-            }
-            if (oldBlurHandler) {
-                engineIconUrl.removeEventListener('blur', oldBlurHandler);
-            }
-            if (oldTimer) {
-                clearTimeout(oldTimer);
-            }
-            
-            // 【内存优化】延迟加载预览图，只在用户停止输入后加载
-            let previewLoadTimer = null;
-            
-            // 添加节流的预览图加载
-            const newListener = () => {
-                const iconUrl = engineIconUrl.value.trim();
-                
-                // 清除之前的定时器
-                if (previewLoadTimer) {
-                    clearTimeout(previewLoadTimer);
-                }
-                
-                // 延迟加载预览图（用户停止输入500ms后）
-                previewLoadTimer = setTimeout(() => {
-                    // 【修复】检查元素是否仍然存在
-                    if (engineIconPreview && engineIconUrl) {
-                        if (iconUrl) {
-                            engineIconPreview.src = iconUrl;
-                        } else {
-                            engineIconPreview.src = 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
-                        }
-                    }
-                    previewLoadTimer = null;
-                    engineIconUrl._iconPreviewTimer = null;
-                }, 500);
-                
-                // 保存定时器引用以便后续清理
-                engineIconUrl._iconPreviewTimer = previewLoadTimer;
-            };
-            
-            engineIconUrl.addEventListener('input', newListener);
-            engineIconUrl._iconPreviewListener = newListener; // 保存引用以便后续移除
-            
-            // 【内存优化】输入框失焦时清理定时器
-            const blurHandler = () => {
-                if (previewLoadTimer) {
-                    clearTimeout(previewLoadTimer);
-                    previewLoadTimer = null;
-                    engineIconUrl._iconPreviewTimer = null;
-                }
-            };
-            engineIconUrl.addEventListener('blur', blurHandler);
-            engineIconUrl._iconPreviewBlurHandler = blurHandler; // 保存引用以便后续移除
+            // 使用iconPreviewHelper统一管理，自动处理防抖和清理
+            iconPreviewHelper.init(engineIconUrl, engineIconPreview, {
+                debounceDelay: 500
+            });
         }
     }
     
     /**
-     * 绑定所有滑块（统一处理）
+     * 绑定所有滑块（统一处理）- 已优化：使用eventManager统一管理，避免内存泄漏
      */
     bindSliders() {
-        const { state, core } = window;
-        
-        if (!state || !core) {
-            console.error('❌ window.state/core 未定义');
+        // 【P0内存优化】防止重复绑定
+        if (this._bindedSliders) {
             return;
         }
+        
+        // 【P0内存优化】清理旧的事件监听器（如果存在）
+        this._sliderEventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this._sliderEventIds = [];
+        
+        // 使用模块导入的state和core，无需检查window
         
         // 合并所有滑块配置
         const allSliders = [
@@ -765,10 +1258,12 @@ class EffectsPanel {
         allSliders.forEach(config => {
             this.bindSlider(config);
         });
+        
+        this._bindedSliders = true;
     }
     
     /**
-     * 绑定单个滑块（通用方法）
+     * 绑定单个滑块（通用方法）- 已优化：使用eventManager统一管理，避免内存泄漏
      */
     bindSlider(config) {
         const slider = document.getElementById(config.id);
@@ -776,8 +1271,8 @@ class EffectsPanel {
         
         const valueDisplay = document.getElementById(config.valueId);
         
-        // input事件：实时更新显示和CSS（使用节流优化）
-        slider.addEventListener('input', (e) => {
+        // 【P0内存优化】使用eventManager统一管理input事件
+        const inputHandler = (e) => {
             const value = config.format ? parseFloat(e.target.value) : e.target.value;
             
             // 立即更新显示文字（低开销）
@@ -785,38 +1280,38 @@ class EffectsPanel {
                 valueDisplay.textContent = config.format(value);
             }
             
-            // 【内存优化】CSS变量批量更新（节流）
+            // 【内存优化】CSS变量批量更新（节流，使用timerManager统一管理）
             if (config.cssVar) {
                 const cssValue = config.toCSS ? config.toCSS(value) : value;
                 this._pendingCssVars.set(config.cssVar, cssValue);
                 
-                // 清除之前的定时器
-                if (this._cssVarUpdateTimer) {
-                    clearTimeout(this._cssVarUpdateTimer);
-                }
-                
                 // 节流更新CSS变量（100ms延迟，减少重排/重绘）
-                this._cssVarUpdateTimer = setTimeout(() => {
+                timerManager.setTimeout('cssVarUpdate', () => {
                     // 批量应用所有待更新的CSS变量
                     this._pendingCssVars.forEach((val, varName) => {
                         document.documentElement.style.setProperty(varName, val);
                     });
                     this._pendingCssVars.clear();
-                    this._cssVarUpdateTimer = null;
                 }, 100);
             }
             
-            // 调用自定义应用函数
+            // 调用自定义应用函数（使用模块导入的state）
             if (config.applyFn) {
-                config.applyFn(value, window.state);
+                config.applyFn(value, state);
             }
-        });
+        };
         
-        // change事件：保存到state
-        slider.addEventListener('change', (e) => {
+        const inputEventId = eventManager.add(slider, 'input', inputHandler);
+        this._sliderEventIds.push(inputEventId);
+        
+        // 【P0内存优化】使用eventManager统一管理change事件
+        const changeHandler = (e) => {
             const value = config.format ? parseFloat(e.target.value) : e.target.value;
             this.saveSliderValue(config.storageKey, value);
-        });
+        };
+        
+        const changeEventId = eventManager.add(slider, 'change', changeHandler);
+        this._sliderEventIds.push(changeEventId);
     }
     
     /**
@@ -864,40 +1359,61 @@ class EffectsPanel {
     }
     
     /**
-     * 绑定所有按钮
+     * 绑定所有按钮 - 已优化：使用eventManager统一管理，避免内存泄漏
      */
     bindButtons() {
+        // 【P0内存优化】防止重复绑定
+        if (this._bindedButtons) {
+            return;
+        }
+        
+        // 【P0内存优化】清理旧的事件监听器（如果存在）
+        this._buttonEventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this._buttonEventIds = [];
+        
         // 绑定所有快速操作按钮
         const quickActionBtns = this.panel.querySelectorAll('.effects-btn[data-action]');
         quickActionBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
+            // 【P0内存优化】使用eventManager统一管理
+            const clickHandler = () => {
                 const action = btn.dataset.action;
                 const group = btn.parentElement;
                 
-                // 切换激活状态
-                group.querySelectorAll('.effects-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                // 切换激活状态（使用ButtonGroupHelper）
+                const allBtns = group.querySelectorAll('.effects-btn');
+                ButtonGroupHelper.updateActiveState(allBtns, null, btn, ['active']);
                 
                 // 执行对应操作
                 this.handleButtonAction(action, btn.dataset);
-            });
+            };
+            
+            const eventId = eventManager.add(btn, 'click', clickHandler);
+            this._buttonEventIds.push(eventId);
         });
         
         // 绑定头部的面板位置按钮
         const positionBtns = this.panel.querySelectorAll('.effects-position-btn[data-action]');
         positionBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
+            // 【P0内存优化】使用eventManager统一管理
+            const clickHandler = () => {
                 const action = btn.dataset.action;
                 const group = btn.parentElement;
                 
-                // 切换激活状态
-                group.querySelectorAll('.effects-position-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                // 切换激活状态（使用ButtonGroupHelper）
+                const allBtns = group.querySelectorAll('.effects-position-btn');
+                ButtonGroupHelper.updateActiveState(allBtns, null, btn, ['active']);
                 
                 // 执行对应操作
                 this.handleButtonAction(action, btn.dataset);
-            });
+            };
+            
+            const eventId = eventManager.add(btn, 'click', clickHandler);
+            this._buttonEventIds.push(eventId);
         });
+        
+        this._bindedButtons = true;
     }
     
     /**
@@ -1076,9 +1592,9 @@ class EffectsPanel {
             );
         }
         
-        // 调用自定义应用函数
+        // 调用自定义应用函数（使用模块导入的state）
         if (config.applyFn) {
-            config.applyFn(value, window.state);
+            config.applyFn(value, state);
         }
     }
     
@@ -1135,7 +1651,6 @@ export function initEffectsPanel() {
 export function openEffectsPanel() {
     // 懒初始化：如果实例不存在，先创建
     if (!effectsPanelInstance) {
-        console.log('[LazyInit] Effects panel initialized on first open');
         initEffectsPanel();
     }
     effectsPanelInstance.openPanel();
@@ -1148,7 +1663,6 @@ export function openEffectsPanel() {
 export function applyEffectsCSSVariables() {
     // 懒初始化：如果实例不存在，先创建
     if (!effectsPanelInstance) {
-        console.log('[LazyInit] Effects panel initialized for CSS variables');
         initEffectsPanel();
     }
     effectsPanelInstance.applySavedCSSVariables();

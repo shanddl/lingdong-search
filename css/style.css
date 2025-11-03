@@ -45,6 +45,11 @@
     from { transform: translateX(50px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
 }
+@keyframes batchEditShake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    25% { transform: translateX(-2px) rotate(-1deg); }
+    75% { transform: translateX(2px) rotate(1deg); }
+}
 .nav-item.slide-out { animation: slideOutLeft 0.25s ease-out forwards; }
 .nav-item.slide-in { animation: slideInRight 0.25s ease-out forwards; }
 
@@ -69,6 +74,23 @@ body[data-updating="true"] .nav-item * {
     transition: none !important;
     animation: none !important;
     transform: none !important;
+}
+
+/* Infinity风格：拖拽时图标内部的动画禁用 */
+body[data-dragging="true"] .nav-item * {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Infinity风格：拖拽时保留所有图标的位置过渡，确保整体一致性移动 */
+body[data-dragging="true"] .nav-item:not(.dragging) {
+    /* 统一的transition和缓动函数，确保所有图标作为整体平滑移动 */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    /* 使用will-change优化性能，提升动画流畅度 */
+    will-change: transform;
+    /* 确保图标在拖拽时保持稳定，避免闪烁 */
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1817,6 +1839,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     z-index: 1; /* 设置较低层级，不遮挡搜索建议和AI搜索 */
 }
 
+/* Infinity风格：拖拽时确保Grid布局平滑 */
+body[data-dragging="true"] #navigation-grid {
+    /* 确保Grid容器本身不影响布局动画 */
+    contain: layout style;
+}
+
 /* 书签拖拽反馈样式 */
 #navigation-grid.drag-over-bookmark {
     outline: 2px dashed rgba(138, 180, 248, 0.6);
@@ -1851,7 +1879,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    transition: transform 0.3s var(--rebound-easing), opacity 0.3s ease;
+    /* Infinity风格：统一的transition确保拖拽时整体一致性移动 */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
     z-index: 1; /* 确保在正常层级，不遮挡搜索建议 */
 }
 
@@ -1867,11 +1896,13 @@ body.animations-complete .nav-item {
 .nav-item:hover .nav-item-icon {
     transform: scale(1.15);
 }
+/* Infinity风格：拖拽时原图标保持可见，半透明显示 */
 .nav-item.dragging {
-    opacity: 0.5;
+    opacity: 0.4 !important;
     transform: scale(0.95);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 50; /* 拖拽时提升层级，但仍低于搜索建议 */
+    /* 不在CSS中设置pointer-events，在JS中动态控制，避免影响拖拽 */
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 1;
 }
 
 .nav-item:active .nav-item-icon-wrapper { transform: scale(0.95); transition-duration: 0.1s; }
@@ -1968,6 +1999,44 @@ body.shape-h-capsule #navigation-grid .nav-item-title {
 body.shape-h-capsule #navigation-grid .nav-item-title { /* Adapted selector */
     /* margin-left: 15px; */ /* <-- 移除此行，由gap替代 */
     font-size: calc(var(--nav-item-size) * 0.25);
+}
+
+/* =================================================================
+   批量编辑模式样式
+   ================================================================= */
+/* 批量编辑模式：所有图标晃动动画 */
+body.batch-edit-mode .nav-item.batch-editable {
+    animation: batchEditShake 0.5s ease-in-out infinite;
+    cursor: pointer;
+}
+
+body.batch-edit-mode .nav-item.batch-editable:hover {
+    animation-play-state: paused;
+    transform: scale(1.05);
+}
+
+/* 批量编辑模式：选中状态 */
+body.batch-edit-mode .nav-item.batch-selected {
+    outline: 3px solid var(--blue);
+    outline-offset: 3px;
+    background: rgba(138, 180, 248, 0.15);
+    animation-play-state: paused;
+}
+
+body.batch-edit-mode .nav-item.batch-selected:hover {
+    background: rgba(138, 180, 248, 0.25);
+}
+
+/* 批量编辑模式：禁用点击导航 */
+body.batch-edit-mode .nav-item.batch-editable {
+    pointer-events: auto;
+}
+
+/* 批量编辑模式：拖拽样式保持 */
+body.batch-edit-mode .nav-item.batch-editable.dragging {
+    animation: none;
+    opacity: 0.6;
+    transform: scale(0.95);
 }
 
 #navigation-tabs-container {

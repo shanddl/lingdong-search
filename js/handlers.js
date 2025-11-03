@@ -14,6 +14,7 @@ import { timeRuleHandlers } from './features/timeRuleHandlers.js';
 import { sanitizer, domSafe, validator } from './security.js';
 import { logger } from './logger.js';
 import { openEffectsPanel } from './features/effects-panel.js';
+import { timerManager } from './utils/timerManager.js';
 
 // =================================================================
 // 事件处理器
@@ -39,6 +40,11 @@ export const handlers = {
             render.searchPills();
         }
          if (e.key === 'Escape') {
+            // 如果处于批量编辑模式，优先退出批量编辑
+            if (navigationModule.state.isBatchEditMode) {
+                navigationModule.utils.toggleBatchEditMode();
+                return;
+            }
             utils.closeAllDropdowns();
             modalManager.hideAll();
         }
@@ -72,6 +78,8 @@ export const handlers = {
             // 创建菜单项
             const menuItems = [
                 { text: '外观设置', action: 'open-appearance-settings', elementType: 'div' },
+                { type: 'divider' },
+                { text: navigationModule.state.isBatchEditMode ? '退出批量编辑' : '批量编辑', action: 'toggle-batch-edit', elementType: 'div' },
                 { type: 'divider' },
                 { text: '刷新页面', action: 'refresh-page', elementType: 'div' }
             ];
@@ -803,7 +811,6 @@ export const handlers = {
                 new URL(url); // 如果URL无效会抛出异常
             } catch (urlErr) {
                 logger.warn('无效的URL格式:', url);
-                utils.showToast('无效的网址格式', 'error');
                 return;
             }
             
@@ -812,7 +819,6 @@ export const handlers = {
             
         } catch (err) {
             logger.error('书签拖拽处理失败:', err);
-            utils.showToast('无法处理拖拽的书签', 'error');
         }
     },
     
@@ -829,7 +835,6 @@ export const handlers = {
         );
         
         if (!currentGroup) {
-            utils.showToast('无法添加：未找到活跃的导航组', 'error');
             return;
         }
         
@@ -838,7 +843,6 @@ export const handlers = {
         
         if (isDuplicate) {
             // 使用安全的提示对话框
-            utils.showToast('该网站已存在于当前分类中', 'error');
             return;
         }
         
@@ -847,10 +851,10 @@ export const handlers = {
         let iconUrl = '';
         try {
             const urlObj = new URL(url);
-            // 使用AI管理器的图标源，获取第一个（最稳定的Google源）
+            // 使用AI管理器的图标源，获取第一个（首选icon.bqb.cool）
             const sources = aiManager.getIconSources(url);
             if (sources && sources.length > 0) {
-                iconUrl = sources[0].url; // 使用最稳定的第一个图标源
+                iconUrl = sources[0].url; // 使用第一个图标源（icon.bqb.cool，首选）
             } else {
                 // 如果获取失败，使用直链favicon作为fallback
                 iconUrl = `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
@@ -876,10 +880,7 @@ export const handlers = {
         
         // 保存数据
         core.saveUserData((err) => {
-            if (err) {
-                utils.showToast('添加失败: ' + err.message, 'error');
-            } else {
-                utils.showToast('网站已添加到导航', 'success');
+            if (!err) {
                 navigationModule.render.grid();
             }
         });
@@ -892,77 +893,36 @@ export const handlers = {
 // =================================================================
 
 /**
- * 通用的图标源测试函数
+ * 通用的图标源测试函数（使用iconSourceTester统一处理）
  * @param {string} urlInputId - URL输入框的ID
  * @param {string} iconSourcesListId - 图标源列表容器的ID
  * @param {string} iconSourcesContentId - 图标源内容容器的ID
  * @param {string} iconUrlInputId - 图标URL输入框的ID
  * @param {string} iconPreviewId - 图标预览的ID
  */
-function testIconSourcesCommon(urlInputId, iconSourcesListId, iconSourcesContentId, iconUrlInputId, iconPreviewId) {
+async function testIconSourcesCommon(urlInputId, iconSourcesListId, iconSourcesContentId, iconUrlInputId, iconPreviewId) {
     const urlInput = document.getElementById(urlInputId);
-    const iconSourcesList = document.getElementById(iconSourcesListId);
-    const iconSourcesContent = document.getElementById(iconSourcesContentId);
     
     if (!urlInput || !urlInput.value.trim()) {
-        utils.showToast('请先输入网站地址', 'warning');
         return;
     }
     
-    if (!iconSourcesList || !iconSourcesContent) {
-        utils.showToast('图标源测试界面未找到', 'error');
-        return;
-    }
-    
+    // 使用统一的iconSourceTester
     try {
-        iconSourcesList.style.display = 'block';
-        iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">正在测试图标源...</div>';
-        
-        const sources = aiManager.getIconSources(urlInput.value);
-        
-        if (sources.length === 0) {
-            iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">无法获取图标源</div>';
-            utils.showToast('无法获取图标源', 'error');
-            return;
-        }
-        
-        iconSourcesContent.innerHTML = '';
-        
-        sources.forEach((source) => {
-            const sourceItem = document.createElement('div');
-            sourceItem.className = 'icon-source-item';
-            
-            sourceItem.innerHTML = `
-                <img src="${source.url}" 
-                     onerror="this.style.display='none'">
-                <span style="color: var(--text-primary);">${source.name}</span>
-                <span style="color: var(--text-secondary); font-size: 10px;">${source.description}</span>
-            `;
-            
-            sourceItem.addEventListener('click', () => {
-                const iconUrlInput = document.getElementById(iconUrlInputId);
-                if (iconUrlInput) {
-                    iconUrlInput.value = source.url;
-                    const iconPreview = document.getElementById(iconPreviewId);
-                    if (iconPreview) {
-                        iconPreview.src = source.url;
-                    }
-                    utils.showToast(`已选择: ${source.name}`, 'success');
-                }
-            });
-            
-            iconSourcesContent.appendChild(sourceItem);
-        });
-        
-        utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
-        
-        } catch (error) {
-            logger.error('测试图标源失败:', error);
-            if (iconSourcesContent) {
-                iconSourcesContent.innerHTML = '<div style="color: var(--error-color);">测试图标源失败</div>';
-            }
-            utils.showToast('测试图标源失败: ' + error.message, 'error');
-        }
+        const { iconSourceTester } = await import('./utils/iconHelper.js');
+        await iconSourceTester.test(
+            urlInput.value.trim(),
+            urlInputId,
+            iconSourcesListId,
+            iconSourcesContentId,
+            iconUrlInputId,
+            iconPreviewId
+        );
+    } catch (importError) {
+        logger.error('导入iconHelper模块失败:', importError);
+        console.error('[ERROR] 导入iconHelper模块失败:', importError);
+        throw importError;
+    }
 }
 
 // =================================================================
@@ -1016,8 +976,9 @@ const actionHandlers = {
             logger.debug('[manage-engines] Opening effects panel');
             openEffectsPanel();
             
-            // 切换到搜索Tab并展开引擎管理手风琴
-            setTimeout(() => {
+            // 切换到搜索Tab并展开引擎管理手风琴（使用timerManager统一管理，避免内存泄漏）
+            timerManager.clearTimeout('handlers-manage-engines-tab');
+            timerManager.setTimeout('handlers-manage-engines-tab', () => {
                 const panel = document.getElementById('effectsSettingsPanel');
                 logger.debug('[manage-engines] Panel found:', !!panel);
                 if (panel) {
@@ -1027,7 +988,8 @@ const actionHandlers = {
                         searchTab.click();
                         
                         // 展开引擎管理手风琴（数据渲染由面板自动处理）
-                        setTimeout(() => {
+                        timerManager.clearTimeout('handlers-manage-engines-accordion');
+                        timerManager.setTimeout('handlers-manage-engines-accordion', () => {
                             const engineAccordion = panel.querySelector('[data-accordion="engine-management"]');
                             logger.debug('[manage-engines] Engine accordion found:', !!engineAccordion);
                             if (engineAccordion && !engineAccordion.classList.contains('expanded')) {
@@ -1056,8 +1018,9 @@ const actionHandlers = {
                 logger.debug('[open-settings] Opening effects panel');
                 module.openEffectsPanel();
                 
-                // 切换到系统Tab
-                setTimeout(() => {
+                // 切换到系统Tab（使用timerManager统一管理，避免内存泄漏）
+                timerManager.clearTimeout('handlers-open-settings-tab');
+                timerManager.setTimeout('handlers-open-settings-tab', () => {
                     const panel = document.getElementById('effectsSettingsPanel');
                     logger.debug('[open-settings] Panel found:', !!panel);
                     if (panel) {
@@ -1082,7 +1045,6 @@ const actionHandlers = {
     // Settings actions
     'sync-settings': () => {
         core.saveUserData(err => {
-            utils.showToast(err ? `同步失败: ${err.message}` : '设置已同步成功!', err ? 'error' : 'success');
         });
     },
     'import-settings': () => {
@@ -1112,9 +1074,8 @@ const actionHandlers = {
                         () => {
                             state.userData = { ...STATIC_CONFIG.DEFAULT_USER_DATA, ...importedData };
                             core.saveUserData(err => {
-                                if (err) return utils.showToast('导入失败', 'error');
+                                if (err) return;
                                 core.loadUserData(); // Reload all settings and UI
-                                utils.showToast('设置导入成功！', 'success');
                             });
                         }
                     );
@@ -1197,8 +1158,7 @@ const actionHandlers = {
                     () => {
                         state.userData.searchEngines = state.userData.searchEngines.filter(eng => eng.id !== id);
                         core.saveUserData(err => {
-                            if(err) return utils.showToast('删除失败', 'error');
-                            utils.showToast('删除成功', 'success');
+                            if(err) return;
                             render.engineManagementModal();
                             render.searchEngineSwitcher();
                         });
@@ -1223,7 +1183,7 @@ const actionHandlers = {
         if (id) {
             state.userData.favoriteScopes = state.userData.favoriteScopes.filter(favId => favId !== id);
             core.saveUserData(err => {
-                if (err) return utils.showToast('取消收藏失败', 'error');
+                if (err) return;
                 render.favorites();
             });
         }
@@ -1270,14 +1230,16 @@ const actionHandlers = {
         const { openEffectsPanel } = await import('./features/effects-panel.js');
         openEffectsPanel();
         
-        // 切换到搜索Tab并展开范围管理手风琴
-        setTimeout(() => {
+        // 切换到搜索Tab并展开范围管理手风琴（使用timerManager统一管理，避免内存泄漏）
+        timerManager.clearTimeout('handlers-manage-scopes-tab');
+        timerManager.setTimeout('handlers-manage-scopes-tab', () => {
             const panel = document.getElementById('effectsSettingsPanel');
             const searchTab = panel?.querySelector('[data-tab="search"]');
             if (searchTab) searchTab.click();
             
             // 展开范围管理手风琴（数据渲染由面板自动处理）
-            setTimeout(() => {
+            timerManager.clearTimeout('handlers-manage-scopes-accordion');
+            timerManager.setTimeout('handlers-manage-scopes-accordion', () => {
                 const scopeAccordion = panel?.querySelector('[data-accordion="scope-management"]');
                 if (scopeAccordion && !scopeAccordion.classList.contains('expanded')) {
                     scopeAccordion.querySelector('.effects-accordion-header').click();
@@ -1298,88 +1260,113 @@ const actionHandlers = {
         managementHandlers.resetEngineForm();
     },
     
-    'test-icon-sources': () => {
+    'test-icon-sources': async () => {
         // AI设置的图标源测试
-        testIconSourcesCommon('ai-search-url', 'icon-sources-list', 'icon-sources-content', 'ai-icon-url', 'ai-icon-preview');
+        logger.debug('test-icon-sources handler 被调用');
+        console.log('[DEBUG] test-icon-sources handler 开始执行');
+        try {
+            const urlInput = document.getElementById('ai-search-url');
+            logger.debug('AI搜索URL输入框:', { 
+                exists: !!urlInput, 
+                value: urlInput?.value,
+                trimmed: urlInput?.value?.trim()
+            });
+            await testIconSourcesCommon('ai-search-url', 'icon-sources-list', 'icon-sources-content', 'ai-icon-url', 'ai-icon-preview');
+            console.log('[DEBUG] test-icon-sources handler 执行完成');
+        } catch (error) {
+            logger.error('test-icon-sources 执行失败:', error);
+            console.error('[ERROR] test-icon-sources 执行失败:', error);
+        }
     },
     
-    'test-engine-icon-sources': () => {
-        // 搜索引擎的图标源测试
+    'test-engine-icon-sources': async () => {
+        // 搜索引擎的图标源测试（使用iconSourceTester）
+        logger.debug('test-engine-icon-sources handler 被调用');
+        console.log('[DEBUG] test-engine-icon-sources handler 开始执行');
         const engineUrl = document.getElementById('engine-url');
-        const iconSourcesList = document.getElementById('engine-icon-sources-list');
-        const iconSourcesContent = document.getElementById('engine-icon-sources-content');
         
         if (!engineUrl || !engineUrl.value.trim()) {
-            utils.showToast('请先输入搜索网址', 'error');
             return;
         }
         
         try {
             // 从搜索网址中提取基础URL（移除{query}等参数）
-            const searchUrl = engineUrl.value.trim();
-            const urlObj = new URL(searchUrl.split('?')[0]); // 只取域名部分
-            const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+            let searchUrl = engineUrl.value.trim();
             
-            iconSourcesList.style.display = 'block';
-            iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">正在获取图标源...</div>';
-            
-            const sources = aiManager.getIconSources(baseUrl);
-            
-            if (sources.length === 0) {
-                iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">无法获取图标源</div>';
-                utils.showToast('无法获取图标源', 'error');
-                return;
+            // 移除查询参数部分（包括{query}占位符）
+            if (searchUrl.includes('?')) {
+                searchUrl = searchUrl.split('?')[0];
             }
             
-            iconSourcesContent.innerHTML = '';
+            // 如果URL不完整，尝试补全
+            if (!searchUrl.startsWith('http://') && !searchUrl.startsWith('https://')) {
+                searchUrl = 'https://' + searchUrl;
+            }
             
-            sources.forEach((source) => {
-                const sourceItem = document.createElement('div');
-                sourceItem.className = 'icon-source-item';
-                
-                sourceItem.innerHTML = `
-                    <img src="${source.url}" 
-                         onerror="this.style.display='none'">
-                    <span style="color: var(--text-primary);">${source.name}</span>
-                    <span style="color: var(--text-secondary); font-size: 10px;">${source.description}</span>
-                `;
-                
-                sourceItem.addEventListener('click', () => {
-                    const iconUrlInput = document.getElementById('engine-icon-url');
-                    const iconPreview = document.getElementById('engine-icon-preview');
-                    if (iconUrlInput) {
-                        iconUrlInput.value = source.url;
-                    }
-                    if (iconPreview) {
-                        iconPreview.src = source.url;
-                    }
-                    utils.showToast(`已选择: ${source.name}`, 'success');
-                });
-                
-                iconSourcesContent.appendChild(sourceItem);
-            });
+            // 解析URL获取origin（协议+域名+端口）
+            const urlObj = new URL(searchUrl);
+            const baseUrl = urlObj.origin;
             
-            utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
-            
+            try {
+                const { iconSourceTester } = await import('./utils/iconHelper.js');
+                await iconSourceTester.test(
+                    baseUrl,
+                    'engine-url',
+                    'engine-icon-sources-list',
+                    'engine-icon-sources-content',
+                    'engine-icon-url',
+                    'engine-icon-preview'
+                );
+            } catch (importError) {
+                logger.error('导入iconHelper模块失败:', importError);
+                console.error('[ERROR] 导入iconHelper模块失败:', importError);
+                throw importError;
+            }
         } catch (error) {
             logger.error('获取图标源失败:', error);
-            iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">获取图标源失败</div>';
-            utils.showToast('获取图标源失败: ' + error.message, 'error');
+            
+            // 显示错误信息，并尝试使用原始URL
+            try {
+                let searchUrl = engineUrl.value.trim();
+                // 移除查询参数
+                if (searchUrl.includes('?')) {
+                    searchUrl = searchUrl.split('?')[0];
+                }
+                // 尝试使用完整的URL（包括路径）
+                try {
+                    const { iconSourceTester } = await import('./utils/iconHelper.js');
+                    await iconSourceTester.test(
+                        searchUrl,
+                        'engine-url',
+                        'engine-icon-sources-list',
+                        'engine-icon-sources-content',
+                        'engine-icon-url',
+                        'engine-icon-preview'
+                    );
+                } catch (importError) {
+                    logger.error('导入iconHelper模块失败:', importError);
+                    console.error('[ERROR] 导入iconHelper模块失败:', importError);
+                    // 已移除提示
+                    throw importError;
+                }
+            } catch (retryError) {
+                // 已移除提示
+            }
         }
     },
     
-    'test-scope-icon-sources': () => {
-        // 搜索范围的图标源测试 - 使用sites字段来获取图标
+    'test-scope-icon-sources': async () => {
+        // 搜索范围的图标源测试 - 使用sites字段来获取图标（使用iconSourceTester）
+        logger.debug('test-scope-icon-sources handler 被调用');
+        console.log('[DEBUG] test-scope-icon-sources handler 开始执行');
         const scopeSitesInput = document.getElementById('scope-editor-sites');
         if (!scopeSitesInput || !scopeSitesInput.value.trim()) {
-            utils.showToast('请先在"限定网站"中输入至少一个网站域名', 'warning');
             return;
         }
         
         // 获取第一个网站域名
         const sites = scopeSitesInput.value.trim().split('\n').filter(s => s.trim());
         if (sites.length === 0) {
-            utils.showToast('请先在"限定网站"中输入至少一个网站域名', 'warning');
             return;
         }
         
@@ -1390,62 +1377,20 @@ const actionHandlers = {
             testUrl = 'https://' + firstSite;
         }
         
-        const iconSourcesList = document.getElementById('scope-icon-sources-list');
-        const iconSourcesContent = document.getElementById('scope-icon-sources-content');
-        
-        if (!iconSourcesList || !iconSourcesContent) {
-            utils.showToast('图标源测试界面未找到', 'error');
-            return;
-        }
-        
         try {
-            iconSourcesList.style.display = 'block';
-            iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">正在测试图标源...</div>';
-            
-            const sources = aiManager.getIconSources(testUrl);
-            
-            if (sources.length === 0) {
-                iconSourcesContent.innerHTML = '<div style="color: var(--text-secondary);">无法获取图标源</div>';
-                utils.showToast('无法获取图标源', 'error');
-                return;
-            }
-            
-            iconSourcesContent.innerHTML = '';
-            
-            sources.forEach((source) => {
-                const sourceItem = document.createElement('div');
-                sourceItem.className = 'icon-source-item';
-                
-                sourceItem.innerHTML = `
-                    <img src="${source.url}" 
-                         onerror="this.style.display='none'">
-                    <span style="color: var(--text-primary);">${source.name}</span>
-                    <span style="color: var(--text-secondary); font-size: 10px;">${source.description}</span>
-                `;
-                
-                sourceItem.addEventListener('click', () => {
-                    const iconUrlInput = document.getElementById('scope-editor-icon');
-                    if (iconUrlInput) {
-                        iconUrlInput.value = source.url;
-                        const iconPreview = document.getElementById('scope-icon-preview');
-                        if (iconPreview) {
-                            iconPreview.src = source.url;
-                        }
-                        utils.showToast(`已选择: ${source.name}`, 'success');
-                    }
-                });
-                
-                iconSourcesContent.appendChild(sourceItem);
-            });
-            
-            utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
-            
-        } catch (error) {
-            logger.error('测试图标源失败:', error);
-            if (iconSourcesContent) {
-                iconSourcesContent.innerHTML = '<div style="color: var(--error-color);">测试图标源失败</div>';
-            }
-            utils.showToast('测试图标源失败: ' + error.message, 'error');
+            const { iconSourceTester } = await import('./utils/iconHelper.js');
+            await iconSourceTester.test(
+                testUrl,
+                'scope-editor-sites', // urlInputId（虽然这里是sites输入框，但用于标识）
+                'scope-icon-sources-list',
+                'scope-icon-sources-content',
+                'scope-editor-icon',
+                'scope-icon-preview'
+            );
+        } catch (importError) {
+            logger.error('导入iconHelper模块失败:', importError);
+            console.error('[ERROR] 导入iconHelper模块失败:', importError);
+            throw importError;
         }
     },
     'toggle-scope-menu': (target, e) => {
@@ -1536,8 +1481,9 @@ const actionHandlers = {
         // 【修复】打开效果面板并切换到外观设置Tab
         openEffectsPanel();
         
-        // 切换到外观Tab
-        setTimeout(() => {
+        // 切换到外观Tab（使用timerManager统一管理，避免内存泄漏）
+        timerManager.clearTimeout('handlers-open-appearance-tab');
+        timerManager.setTimeout('handlers-open-appearance-tab', () => {
             const panel = document.getElementById('effectsSettingsPanel');
             if (panel) {
                 const appearanceTab = panel.querySelector('[data-tab="appearance"]');
@@ -1577,7 +1523,6 @@ const actionHandlers = {
         core.saveUserData((error) => {
             if (error) {
                 logger.error('Failed to save navigation alignment:', error);
-                utils.showToast('保存失败', 'error');
             }
         });
     },
@@ -1598,7 +1543,6 @@ const actionHandlers = {
         core.saveUserData((error) => {
             if (error) {
                 logger.error('Failed to save navigation shape:', error);
-                utils.showToast('保存失败', 'error');
             }
         });
     },
@@ -1629,7 +1573,6 @@ const actionHandlers = {
         core.saveUserData((error) => {
             if (error) {
                 logger.error('Failed to save panel theme:', error);
-                utils.showToast('保存失败', 'error');
             }
         });
     },
@@ -1654,7 +1597,6 @@ const actionHandlers = {
         
         // 保存设置
         localStorage.setItem('panel-position', position);
-        utils.showToast(`面板已移至${position === 'left' ? '左侧' : '右侧'}`, 'success');
     },
     'manage-nav-groups': async () => {
         navigationModule.handlers.onManageGroups();
@@ -1663,14 +1605,16 @@ const actionHandlers = {
         const { openEffectsPanel } = await import('./features/effects-panel.js');
         openEffectsPanel();
         
-        // 切换到导航Tab并展开导航组管理手风琴
-        setTimeout(() => {
+        // 切换到导航Tab并展开导航组管理手风琴（使用timerManager统一管理，避免内存泄漏）
+        timerManager.clearTimeout('handlers-manage-nav-groups-tab');
+        timerManager.setTimeout('handlers-manage-nav-groups-tab', () => {
             const panel = document.getElementById('effectsSettingsPanel');
             const navTab = panel.querySelector('[data-tab="navigation"]');
             if (navTab) navTab.click();
             
             // 展开导航组管理手风琴
-            setTimeout(() => {
+            timerManager.clearTimeout('handlers-manage-nav-groups-accordion');
+            timerManager.setTimeout('handlers-manage-nav-groups-accordion', () => {
                 const navGroupAccordion = panel.querySelector('[data-accordion="nav-group-management"]');
                 if (navGroupAccordion && !navGroupAccordion.classList.contains('expanded')) {
                     navGroupAccordion.querySelector('.effects-accordion-header').click();
@@ -1680,6 +1624,9 @@ const actionHandlers = {
     },
     'refresh-page': () => {
         window.location.reload();
+    },
+    'toggle-batch-edit': () => {
+        navigationModule.utils.toggleBatchEditMode();
     },
     
     // AI设置动作处理器
@@ -1693,8 +1640,6 @@ const actionHandlers = {
         const query = dom.realSearchInput ? dom.realSearchInput.value.trim() : '';
         if (query) {
             searchModule.performAiSearch(aiType, query);
-        } else {
-            utils.showToast('请在搜索框中输入查询内容', 'error');
         }
     },
     'ai-favorite-click': (target) => {
@@ -1712,9 +1657,27 @@ const actionHandlers = {
  */
 export function handleActionClick(e) {
     const target = e.target.closest('[data-action]');
-    if (!target) return;
+    if (!target) {
+        logger.debug('handleActionClick: 未找到data-action元素');
+        return;
+    }
     
     const action = target.dataset.action;
+    logger.debug('handleActionClick 被调用', { 
+        action, 
+        targetId: target.id, 
+        className: target.className, 
+        tagName: target.tagName 
+    });
+    console.log('[DEBUG] handleActionClick 被调用', { action, targetId: target.id });
+    
+    // 对于按钮类型的元素，阻止表单提交（如果是button且在form中）
+    if (target.tagName === 'BUTTON' && target.closest('form')) {
+        // type="button"的按钮不应该触发表单提交，但为了安全还是阻止默认行为
+        if (target.type === 'button') {
+            e.preventDefault();
+        }
+    }
     
     // 对于删除操作，立即阻止事件冒泡和默认行为，避免触发父元素的点击事件
     const preventBubbleActions = ['remove-history-item', 'remove-pill', 'remove-favorite'];
@@ -1738,11 +1701,29 @@ export function handleActionClick(e) {
             // 【修复】对于其他action，根据handler的参数数量调用
             const handler = actionHandlers[action];
             try {
+                // 阻止默认行为和事件冒泡，避免影响其他逻辑
+                e.preventDefault();
+                e.stopPropagation();
+                
                 // 检查handler的函数签名长度
                 // async函数的length可能不准确，需要特殊处理
+                // 检查是否是异步函数（图标源测试相关的都是异步的）
+                const asyncActions = ['test-icon-sources', 'test-engine-icon-sources', 'test-scope-icon-sources'];
+                const isAsyncAction = asyncActions.includes(action);
+                
+                logger.debug('准备执行handler', { action, isAsyncAction, handlerLength: handler.length });
+                
                 if (action === 'manage-engines' || action === 'open-settings') {
                     // 这些handler明确不需要参数
                     handler();
+                } else if (isAsyncAction) {
+                    // 异步handler，需要await处理
+                    logger.debug(`执行异步action: ${action}`);
+                    console.log(`[DEBUG] 执行异步action: ${action}`);
+                    handler().catch(error => {
+                        logger.error(`Error in async action handler "${action}":`, error);
+                        console.error(`[ERROR] 异步action handler "${action}" 执行失败:`, error);
+                    });
                 } else if (handler.length > 1) {
                     // handler需要多个参数（包括event）
                     handler(target, e);
@@ -1777,8 +1758,9 @@ export function handleActionClick(e) {
                 searchEngineMenu.classList.remove('visible');
             }
         } else if (isInEngineMenu && (action === 'manage-engines' || action === 'open-settings')) {
-            // 延迟关闭菜单，确保handler能正常执行
-            setTimeout(() => {
+            // 延迟关闭菜单，确保handler能正常执行（使用timerManager统一管理，避免内存泄漏）
+            timerManager.clearTimeout('handlers-close-engine-menu');
+            timerManager.setTimeout('handlers-close-engine-menu', () => {
                 const searchEngineMenu = document.getElementById('search-engine-menu');
                 if (searchEngineMenu) {
                     searchEngineMenu.classList.remove('visible');

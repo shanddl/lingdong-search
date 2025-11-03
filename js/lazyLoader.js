@@ -11,8 +11,10 @@ import { logger } from './logger.js';
  */
 export class LazyLoader {
     constructor(options = {}) {
-        // 【内存优化】复用临时Image对象，避免频繁创建
-        this._tempImage = null;
+        // 【P1内存优化】Image对象池 - 复用Image对象，避免频繁创建
+        this._imagePool = []; // Image对象池
+        this._poolSize = 3; // 池大小限制（最多3个Image对象）
+        this._poolIndex = 0; // 当前使用的池索引（循环使用）
         this.config = {
             rootMargin: options.rootMargin || config.performance.lazyLoad.rootMargin,
             threshold: options.threshold || config.performance.lazyLoad.threshold,
@@ -90,11 +92,43 @@ export class LazyLoader {
             return;
         }
         
-        // 【内存优化】复用临时图片对象，避免频繁创建
-        if (!this._tempImage) {
-            this._tempImage = new Image();
+        // 【P1内存优化】从对象池获取或创建Image对象
+        // 优先使用池中已有的对象，如果没有或池未满则创建新对象
+        let tempImg = null;
+        
+        // 尝试从池中获取一个可用的Image对象（检查是否正在使用）
+        for (let i = 0; i < this._imagePool.length; i++) {
+            const poolImg = this._imagePool[i];
+            // 简单检查：如果src为空或已完成加载，可以复用
+            if (!poolImg.src || poolImg.complete) {
+                tempImg = poolImg;
+                // 清理旧状态
+                tempImg.onload = null;
+                tempImg.onerror = null;
+                tempImg.src = '';
+                tempImg.srcset = '';
+                break;
+            }
         }
-        const tempImg = this._tempImage;
+        
+        // 如果池中没有可用对象，创建新的
+        if (!tempImg) {
+            tempImg = new Image();
+            // 如果池未满，加入池中以便后续复用
+            if (this._imagePool.length < this._poolSize) {
+                this._imagePool.push(tempImg);
+            } else {
+                // 池已满，替换最旧的（循环替换）
+                const oldImg = this._imagePool[this._poolIndex];
+                if (oldImg) {
+                    oldImg.onload = null;
+                    oldImg.onerror = null;
+                    oldImg.src = '';
+                }
+                this._imagePool[this._poolIndex] = tempImg;
+                this._poolIndex = (this._poolIndex + 1) % this._poolSize;
+            }
+        }
         
         // 【修复】保存当前处理的img引用，防止回调中的img引用错误
         const currentImg = img;
@@ -102,7 +136,6 @@ export class LazyLoader {
         const currentSrcset = srcset;
         
         // 清理之前的事件监听器（防止累积）
-        // 注意：设置新的src会中断前一个加载，这是有意的（只关心最新的图片）
         tempImg.onload = null;
         tempImg.onerror = null;
         tempImg.src = ''; // 中断前一个加载（如果有）
@@ -156,30 +189,91 @@ export class LazyLoader {
     }
     
     /**
-     * 加载背景图
+     * 加载背景图（已优化：复用Image对象，避免频繁创建导致内存泄漏）
      */
     loadBackground(element) {
         const bgUrl = element.dataset.bg;
         
         if (!bgUrl) return;
         
-        const img = new Image();
-        img.onload = () => {
-            element.style.backgroundImage = `url('${bgUrl}')`;
-            element.classList.remove(this.config.loadingClass);
-            element.classList.add(this.config.loadedClass);
+        // 【P1内存优化】从对象池获取或创建Image对象（与loadImage相同的逻辑）
+        let tempImg = null;
+        
+        // 尝试从池中获取一个可用的Image对象
+        for (let i = 0; i < this._imagePool.length; i++) {
+            const poolImg = this._imagePool[i];
+            if (!poolImg.src || poolImg.complete) {
+                tempImg = poolImg;
+                tempImg.onload = null;
+                tempImg.onerror = null;
+                tempImg.src = '';
+                break;
+            }
+        }
+        
+        // 如果池中没有可用对象，创建新的
+        if (!tempImg) {
+            tempImg = new Image();
+            if (this._imagePool.length < this._poolSize) {
+                this._imagePool.push(tempImg);
+            } else {
+                const oldImg = this._imagePool[this._poolIndex];
+                if (oldImg) {
+                    oldImg.onload = null;
+                    oldImg.onerror = null;
+                    oldImg.src = '';
+                }
+                this._imagePool[this._poolIndex] = tempImg;
+                this._poolIndex = (this._poolIndex + 1) % this._poolSize;
+            }
+        }
+        
+        // 保存当前处理的element引用，防止回调中的引用错误
+        const currentElement = element;
+        const currentBgUrl = bgUrl;
+        
+        // 清理之前的事件监听器（防止累积）
+        tempImg.onload = null;
+        tempImg.onerror = null;
+        tempImg.src = ''; // 中断前一个加载（如果有）
+        
+        tempImg.onload = () => {
+            // 加载成功 - 使用保存的引用，确保处理的是正确的元素
+            if (!currentElement.isConnected) {
+                // 元素已被移除，跳过处理
+                return;
+            }
             
-            logger.debug('[LazyLoader] 背景图加载成功', bgUrl);
+            currentElement.style.backgroundImage = `url('${currentBgUrl}')`;
+            currentElement.classList.remove(this.config.loadingClass);
+            currentElement.classList.add(this.config.loadedClass);
+            
+            // 清理临时图片的引用
+            tempImg.onload = null;
+            tempImg.onerror = null;
+            
+            logger.debug('[LazyLoader] 背景图加载成功', currentBgUrl);
         };
         
-        img.onerror = () => {
-            element.classList.remove(this.config.loadingClass);
-            element.classList.add(this.config.errorClass);
+        tempImg.onerror = () => {
+            // 加载失败 - 使用保存的引用
+            if (!currentElement.isConnected) {
+                // 元素已被移除，跳过处理
+                return;
+            }
             
-            logger.warn('[LazyLoader] 背景图加载失败', bgUrl);
+            currentElement.classList.remove(this.config.loadingClass);
+            currentElement.classList.add(this.config.errorClass);
+            
+            // 清理临时图片的引用
+            tempImg.onload = null;
+            tempImg.onerror = null;
+            
+            logger.warn('[LazyLoader] 背景图加载失败', currentBgUrl);
         };
         
-        img.src = bgUrl;
+        // 开始预加载
+        tempImg.src = currentBgUrl;
     }
     
     /**
@@ -258,7 +352,7 @@ export class LazyLoader {
     }
     
     /**
-     * 销毁懒加载器
+     * 销毁懒加载器（已优化：完整清理所有资源）
      */
     destroy() {
         if (this.observer) {
@@ -266,13 +360,16 @@ export class LazyLoader {
             this.observer = null;
         }
         
-        // 【内存优化】清理临时Image对象
-        if (this._tempImage) {
-            this._tempImage.onload = null;
-            this._tempImage.onerror = null;
-            this._tempImage.src = '';
-            this._tempImage = null;
-        }
+        // 【P1内存优化】清理Image对象池
+        this._imagePool.forEach(img => {
+            if (img) {
+                img.onload = null;
+                img.onerror = null;
+                img.src = '';
+            }
+        });
+        this._imagePool = [];
+        this._poolIndex = 0;
         
         this.images.clear();
         logger.debug('[LazyLoader] 已销毁');
@@ -284,15 +381,67 @@ export class LazyLoader {
  */
 let globalLazyLoader = null;
 
+// 【根本修复】页面加载时立即重置全局实例，确保每次刷新都是干净状态
+if (typeof window !== 'undefined' && document.readyState === 'loading') {
+    // 页面正在加载，清理旧的全局实例（如果存在）
+    if (globalLazyLoader) {
+        try {
+            globalLazyLoader.destroy();
+        } catch (e) {
+            // 忽略错误，旧实例可能已经无效
+        }
+        globalLazyLoader = null;
+        if (window.__cachedLazyLoader) {
+            window.__cachedLazyLoader = null;
+        }
+    }
+}
+
 /**
- * 获取全局懒加载器
+ * 获取全局懒加载器（已优化：刷新页面时检测并清理旧实例）
  * @returns {LazyLoader}
  */
 export function getLazyLoader() {
+    // 【修复】如果已存在实例，检查是否需要清理（页面刷新时）
+    if (globalLazyLoader) {
+        // 检查observer是否已断开或容器已断开连接（可能页面已刷新）
+        if (!globalLazyLoader.observer || 
+            (globalLazyLoader.container && !globalLazyLoader.container.isConnected)) {
+            // 旧实例已失效，清理并创建新实例
+            try {
+                globalLazyLoader.destroy();
+            } catch (e) {
+                logger.warn('[LazyLoader] 清理旧实例失败:', e);
+            }
+            globalLazyLoader = null;
+        }
+    }
+    
     if (!globalLazyLoader) {
         globalLazyLoader = new LazyLoader();
+        // 缓存引用，便于清理
+        if (typeof window !== 'undefined') {
+            window.__cachedLazyLoader = globalLazyLoader;
+        }
     }
     return globalLazyLoader;
+}
+
+/**
+ * 【新增】重置全局懒加载器（用于页面刷新时清理）
+ */
+export function resetLazyLoader() {
+    if (globalLazyLoader) {
+        try {
+            globalLazyLoader.destroy();
+        } catch (e) {
+            logger.warn('[LazyLoader] 重置失败:', e);
+        }
+        globalLazyLoader = null;
+        if (typeof window !== 'undefined') {
+            window.__cachedLazyLoader = null;
+        }
+    }
 }
 
 /**

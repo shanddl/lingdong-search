@@ -2,6 +2,7 @@ import { aiManager } from './ai-manager.js';
 import { utils } from '../utils.js';
 import { searchModule } from './search.js';
 import { logger } from '../logger.js';
+import { timerManager } from '../utils/timerManager.js';
 // modalManager 和 dom 已不再需要，AI设置已迁移到侧边面板
 
 // =================================================================
@@ -23,27 +24,29 @@ export const aiSettings = {
         const { openEffectsPanel } = await import('./effects-panel.js');
         openEffectsPanel();
         
-        // 切换到搜索Tab并展开AI管理手风琴
-        setTimeout(() => {
+        // 【P0内存优化】切换到搜索Tab并展开AI管理手风琴（使用timerManager统一管理）
+        timerManager.clearTimeout('ai-settings-open-tab');
+        timerManager.clearTimeout('ai-settings-open-accordion');
+        
+        timerManager.setTimeout('ai-settings-open-tab', () => {
             const panel = document.getElementById('effectsSettingsPanel');
-            const searchTab = panel.querySelector('[data-tab="search"]');
+            const searchTab = panel?.querySelector('[data-tab="search"]');
             if (searchTab) searchTab.click();
             
-                // 展开AI管理手风琴（数据渲染由面板自动处理）
-                setTimeout(() => {
-                    const aiAccordion = panel.querySelector('[data-accordion="ai-management"]');
-                    if (aiAccordion && !aiAccordion.classList.contains('expanded')) {
-                        aiAccordion.querySelector('.effects-accordion-header').click();
-                    }
-                }, 100);
+            // 展开AI管理手风琴（数据渲染由面板自动处理）
+            timerManager.setTimeout('ai-settings-open-accordion', () => {
+                const aiAccordion = panel?.querySelector('[data-accordion="ai-management"]');
+                if (aiAccordion && !aiAccordion.classList.contains('expanded')) {
+                    const header = aiAccordion.querySelector('.effects-accordion-header');
+                    if (header) header.click();
+                }
+            }, 100);
         }, 100);
     },
 
     // 渲染AI列表
     renderAIList() {
-        console.log('[AI Settings] renderAIList called');
         const aiList = document.getElementById('ai-list');
-        console.log('[AI Settings] aiList element:', aiList);
         if (!aiList) {
             console.error('[AI Settings] AI list element not found');
             logger.error('AI list element not found');
@@ -51,7 +54,19 @@ export const aiSettings = {
         }
 
         const ais = aiManager.getAllAIs();
-        console.log('[AI Settings] AIs to render:', ais);
+        
+        // 【P0内存优化】清理旧的图片资源（Blob URL）后再清空innerHTML
+        const oldImages = aiList.querySelectorAll('img');
+        oldImages.forEach(img => {
+            if (img.src && img.src.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(img.src);
+                } catch (e) {
+                    // ignore
+                }
+            }
+        });
+        
         aiList.innerHTML = '';
 
         ais.forEach(ai => {
@@ -123,7 +138,6 @@ export const aiSettings = {
     toggleVisibility(id) {
         const newState = aiManager.toggleSearchVisibility(id);
         this.renderAIList();
-        utils.showToast(newState ? '已显示' : '已隐藏', 'success');
     },
 
     // 编辑AI
@@ -170,7 +184,6 @@ export const aiSettings = {
             if (aiManager.deleteAI(id)) {
                 this.renderAIList();
                 this.resetForm();
-                utils.showToast('AI已删除', 'success');
             }
         }
     },
@@ -227,12 +240,10 @@ export const aiSettings = {
 
             if (!name || !description || !websiteUrl || !url) {
                 logger.debug('Validation failed: missing required fields');
-                utils.showToast('请填写所有必填字段', 'error');
                 return;
             }
         } catch (error) {
             logger.error('Error in saveAI form data retrieval:', error);
-            utils.showToast('获取表单数据失败: ' + error.message, 'error');
             return;
         }
 
@@ -256,15 +267,15 @@ export const aiSettings = {
                     logger.debug('Update callback received:', { error, updated });
                     if (error) {
                         logger.error('Update error:', error);
-                        utils.showToast('更新失败: ' + error.message, 'error');
+('更新失败: ' + error.message, 'error');
                     } else if (updated) {
                         logger.debug('Update successful, updating UI');
                         this.renderAIList();
                         this.resetForm();
-                        utils.showToast('AI已更新', 'success');
+('AI已更新', 'success');
                     } else {
                         logger.debug('Update failed: no result');
-                        utils.showToast('更新失败', 'error');
+('更新失败', 'error');
                     }
                 });
             } else {
@@ -274,21 +285,21 @@ export const aiSettings = {
                     logger.debug('Add callback received:', { error, newAI });
                     if (error) {
                         logger.error('Add error:', error);
-                        utils.showToast('添加失败: ' + error.message, 'error');
+('添加失败: ' + error.message, 'error');
                     } else if (newAI) {
                         logger.debug('Add successful, updating UI');
                         this.renderAIList();
                         this.resetForm();
-                        utils.showToast('AI已添加', 'success');
+('AI已添加', 'success');
                     } else {
                         logger.debug('Add failed: no result');
-                        utils.showToast('添加失败', 'error');
+('添加失败', 'error');
                     }
                 });
             }
         } catch (error) {
             logger.error('Save error:', error);
-            utils.showToast('保存失败: ' + error.message, 'error');
+('保存失败: ' + error.message, 'error');
         }
     },
 
@@ -312,14 +323,14 @@ export const aiSettings = {
         const iconSourcesContent = document.getElementById('icon-sources-content');
         
         if (!urlInput.value) {
-            utils.showToast('请先输入AI搜索网址', 'error');
+('请先输入AI搜索网址', 'error');
             return;
         }
 
         try {
             const sources = aiManager.getIconSources(urlInput.value);
             if (sources.length === 0) {
-                utils.showToast('无法获取图标源', 'error');
+('无法获取图标源', 'error');
                 return;
             }
 
@@ -343,7 +354,7 @@ export const aiSettings = {
                     const iconUrlInput = document.getElementById('ai-icon-url');
                     if (iconUrlInput) iconUrlInput.value = source.url;
                     this.updateIconPreview(source.url);
-                    utils.showToast(`已选择: ${source.name}`, 'success');
+(`已选择: ${source.name}`, 'success');
                 });
                 
                 iconSourcesContent.appendChild(sourceItem);
@@ -351,11 +362,11 @@ export const aiSettings = {
             
             // 显示图标源列表
             iconSourcesList.style.display = 'block';
-            utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
+(`找到 ${sources.length} 个图标源`, 'success');
             
         } catch (error) {
             console.error('测试图标源失败:', error);
-            utils.showToast('测试图标源失败: ' + error.message, 'error');
+('测试图标源失败: ' + error.message, 'error');
         }
     },
 

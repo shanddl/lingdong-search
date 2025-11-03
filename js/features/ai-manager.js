@@ -182,8 +182,14 @@ export const aiManager = {
         try {
             const urlObj = new URL(url);
             const hostname = urlObj.hostname;
+            const origin = urlObj.origin;
             
             return [
+                {
+                    name: 'Icon.bqb.cool',
+                    url: `https://icon.bqb.cool/?url=${encodeURIComponent(origin)}`,
+                    description: '第三方图标服务，首选'
+                },
                 {
                     name: 'Google Favicon',
                     url: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
@@ -200,18 +206,13 @@ export const aiManager = {
                     description: '网站原生favicon'
                 },
                 {
-                    name: 'Icon.bqb.cool',
-                    url: `https://icon.bqb.cool/?url=${encodeURIComponent(urlObj.origin)}`,
-                    description: '第三方图标服务'
-                },
-                {
                     name: 'GitHub Favicons',
                     url: `https://favicons.githubusercontent.com/${hostname}`,
                     description: 'GitHub图标服务'
                 },
                 {
                     name: 'Statvoo',
-                    url: `https://api.statvoo.com/favicon/?url=${encodeURIComponent(urlObj.origin)}`,
+                    url: `https://api.statvoo.com/favicon/?url=${encodeURIComponent(origin)}`,
                     description: 'Statvoo图标服务'
                 }
             ];

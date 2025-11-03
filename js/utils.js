@@ -4,6 +4,8 @@ import { render } from './ui/render.js';
 import { STATIC_CONFIG } from './constants.js';
 import { eventManager } from './eventManager.js';
 import { sanitizer } from './security.js';
+import { URLFormatter } from './utils/urlFormatter.js';
+import { NotificationService } from './utils/notificationService.js';
 
 // =================================================================
 // 核心及工具函数
@@ -200,10 +202,8 @@ export const utils = {
         });
     },
     formatScopeSite: (url) => {
-        try {
-            const hostname = new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
-            return hostname.replace(/^www\./, '');
-        } catch (e) { return url; }
+        // 向后兼容：使用URLFormatter
+        return URLFormatter.formatScopeSite(url);
     },
     alignPanelHeights: () => {
         if (!dom.searchScopeMenu || !dom.searchSuggestionsContainer) return;
@@ -259,13 +259,7 @@ export const utils = {
         }
     },
     showToast: (message, type = 'success') => {
-        if (!dom.toastNotification) return;
-        dom.toastNotification.textContent = message;
-        dom.toastNotification.className = `toast-notification ${type}`;
-        dom.toastNotification.classList.add('show');
-        setTimeout(() => {
-            dom.toastNotification.classList.remove('show');
-        }, 2500);
+        // 提示框功能已禁用
     },
     
     /**
@@ -437,10 +431,8 @@ export const utils = {
                 return divider;
             }
             
-            // 【修复】确保item有text属性，避免undefined
             if (!item || !item.text) {
-                console.warn('createContextMenuItem: invalid item', item);
-                return document.createElement('div'); // 返回空元素
+                return document.createElement('div');
             }
             
             const menuItem = document.createElement(item.elementType || 'button');
@@ -701,11 +693,7 @@ export const utils = {
         saveWithToast: (saveFn, successMsg = '保存成功', errorMsg = '保存失败') => {
             if (typeof saveFn !== 'function') return;
             saveFn((err) => {
-                if (err) {
-                    utils.showToast(errorMsg, 'error');
-                } else {
-                    utils.showToast(successMsg, 'success');
-                }
+                // 提示框已移除，仅执行保存操作
             });
         }
     },
@@ -964,6 +952,63 @@ export const utils = {
          */
         createDragHandlers: (onDragStart, onDragOver, onDragEnd, onDrop) => {
             return { onDragStart, onDragOver, onDragEnd, onDrop };
+        },
+
+        /**
+         * 从URL获取图标源URL（使用统一的图标源方案）
+         * @param {string} url - 网站URL
+         * @returns {string} 图标URL，如果失败则返回默认占位符URL
+         */
+        getIconUrlFromUrl: (url) => {
+            if (!url || typeof url !== 'string') {
+                return 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
+            }
+            
+            try {
+                // 使用icon.bqb.cool作为首选图标源
+                const urlObj = new URL(url);
+                const origin = urlObj.origin;
+                
+                // 首选使用icon.bqb.cool
+                return `https://icon.bqb.cool/?url=${encodeURIComponent(origin)}`;
+            } catch (error) {
+                // URL解析失败，返回默认占位符
+                return 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
+            }
+        },
+
+        /**
+         * 从URL获取所有可用的图标源（使用aiManager.getIconSources）
+         * @param {string} url - 网站URL
+         * @returns {Promise<string>} 图标URL，返回第一个（首选icon.bqb.cool）图标源，如果失败则返回默认占位符URL
+         */
+        getIconUrlFromUrlAsync: async (url) => {
+            if (!url || typeof url !== 'string') {
+                return 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
+            }
+            
+            try {
+                // 动态导入aiManager避免循环依赖
+                const { aiManager } = await import('./features/ai-manager.js');
+                const sources = aiManager.getIconSources(url);
+                
+                if (sources && sources.length > 0) {
+                    // 使用第一个图标源（icon.bqb.cool，首选）
+                    return sources[0].url;
+                } else {
+                    // 如果获取失败，使用直链favicon作为fallback
+                    const urlObj = new URL(url);
+                    return `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
+                }
+            } catch (error) {
+                // URL解析失败，返回默认占位符
+                try {
+                    const urlObj = new URL(url);
+                    return `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
+                } catch (e) {
+                    return 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
+                }
+            }
         }
     }
 };

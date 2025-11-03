@@ -4,6 +4,8 @@
 
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { eventManager } from './eventManager.js';
+import { timerManager } from './utils/timerManager.js';
 
 /**
  * 虚拟滚动器类
@@ -161,21 +163,29 @@ export class VirtualScroller {
     }
     
     /**
-     * 绑定事件
+     * 绑定事件（已优化：使用eventManager和timerManager统一管理，避免内存泄漏）
      */
     bindEvents() {
-        let scrollTimeout;
+        // 【修复】如果已经绑定过事件，先清理，避免重复绑定导致内存泄漏
+        if (this.scrollEventId) {
+            eventManager.remove(this.scrollEventId);
+            this.scrollEventId = null;
+        }
         
-        this.container.addEventListener('scroll', () => {
-            // 防抖优化
-            clearTimeout(scrollTimeout);
-            scrollTimeout = setTimeout(() => {
+        // 创建scroll事件处理函数
+        const scrollHandler = () => {
+            // 【内存优化】使用timerManager统一管理定时器，避免内存泄漏
+            timerManager.clearTimeout(`virtualScroller-${this.container.id || 'default'}`);
+            timerManager.setTimeout(`virtualScroller-${this.container.id || 'default'}`, () => {
                 if (this.scrollTop !== this.container.scrollTop) {
                     this.scrollTop = this.container.scrollTop;
                     this.render();
                 }
             }, 16); // ~60fps
-        });
+        };
+        
+        // 【内存优化】使用eventManager统一管理事件监听器，避免内存泄漏
+        this.scrollEventId = eventManager.add(this.container, 'scroll', scrollHandler);
     }
     
     /**
@@ -210,10 +220,27 @@ export class VirtualScroller {
     }
     
     /**
-     * 销毁虚拟滚动器
+     * 销毁虚拟滚动器（已优化：完整清理所有资源，避免内存泄漏）
      */
     destroy() {
+        // 【内存优化】移除事件监听器
+        if (this.scrollEventId) {
+            eventManager.remove(this.scrollEventId);
+            this.scrollEventId = null;
+        }
+        
+        // 【内存优化】清理定时器
+        timerManager.clearTimeout(`virtualScroller-${this.container.id || 'default'}`);
+        
+        // 清空容器内容
         this.container.innerHTML = '';
+        
+        // 清理引用
+        this.container = null;
+        this.data = null;
+        this.renderItem = null;
+        this.visibleItems = [];
+        
         logger.info('[VirtualScroller] 已销毁');
     }
 }

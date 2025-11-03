@@ -16,6 +16,7 @@ import { timeRuleHandlers } from './features/timeRuleHandlers.js';
 import { managementHandlers } from './features/managementHandlers.js';
 import { render } from './ui/render.js';
 import { utils } from './utils.js';
+import { iconPreviewHelper } from './utils/iconHelper.js';
 
 /**
  * 初始化器类 - 管理应用的各个初始化步骤
@@ -56,24 +57,21 @@ export class Initializer {
     }
 
     /**
-     * 初始化图标预览功能（优化：提取通用函数）
+     * 初始化图标预览功能（使用iconPreviewHelper统一管理）
      */
     initIconPreviews() {
-        // 通用图标预览初始化函数
-        const initIconPreview = (inputElement, previewElement) => {
-            if (inputElement && previewElement) {
-                this.globalEventIds.push(
-                    eventManager.add(inputElement, 'input', () => {
-                        const iconUrl = inputElement.value.trim();
-                        previewElement.src = iconUrl || 'https://placehold.co/24x24/3c4043/e8eaed?text=?';
-                    })
-                );
-            }
-        };
-
-        // 批量初始化图标预览
-        initIconPreview(dom.scopeEditorIcon, dom.scopeIconPreview);
-        initIconPreview(dom.engineIconUrl, dom.engineIconPreview);
+        // 使用iconPreviewHelper统一初始化图标预览
+        if (dom.scopeEditorIcon && dom.scopeIconPreview) {
+            iconPreviewHelper.init(dom.scopeEditorIcon, dom.scopeIconPreview, {
+                debounceDelay: 500
+            }, this.globalEventIds);
+        }
+        
+        if (dom.engineIconUrl && dom.engineIconPreview) {
+            iconPreviewHelper.init(dom.engineIconUrl, dom.engineIconPreview, {
+                debounceDelay: 500
+            }, this.globalEventIds);
+        }
     }
 
     /**
@@ -269,8 +267,7 @@ export class Initializer {
                 if (scopeId && !state.userData.favoriteScopes.includes(scopeId)) {
                     state.userData.favoriteScopes.push(scopeId);
                     core.saveUserData(err => {
-                        if (err) return utils.showToast('收藏失败', 'error');
-                        utils.showToast('收藏成功！', 'success');
+                        if (err) return;
                         render.favorites();
                     });
                 }
@@ -283,6 +280,14 @@ export class Initializer {
      */
     getGlobalEventIds() {
         return this.globalEventIds;
+    }
+    
+    /**
+     * 【新增】重置初始器状态（用于页面刷新时）
+     * 清理所有事件ID，但保留实例本身
+     */
+    reset() {
+        this.globalEventIds.length = 0;
     }
 }
 

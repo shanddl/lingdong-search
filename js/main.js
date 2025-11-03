@@ -16,14 +16,70 @@ import { logger } from './logger.js';
 import { eventManager } from './eventManager.js';
 import { errorHandler } from './errorHandler.js';
 import { initializer } from './initializer.js';
-import { initNestedSlider } from './sliderHelper.js'; // initSliders 已移除，外观设置由 effects-panel.js 管理
+import { initNestedSlider } from './sliderHelper.js';
 import { initEffectsPanel, openEffectsPanel, applyEffectsCSSVariables } from './features/effects-panel.js';
+import { config } from './config.js';
+import { DOMHelper } from './utils/domHelper.js';
+import { ButtonGroupHelper } from './utils/buttonGroupHelper.js';
+import { URLFormatter } from './utils/urlFormatter.js';
+import { Formatter } from './utils/formatter.js';
+import { timerManager } from './utils/timerManager.js';
+import { getLazyLoader, resetLazyLoader } from './lazyLoader.js';
 
 // 存储全局事件监听器ID
 const globalEventIds = [];
 
-// Initialize state with default data
-state.userData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
+// 缓存DOM查询结果，避免重复查询
+const cachedDOMQueries = {
+    shapeButtons: null
+};
+
+// 【修复】防止重复初始化的标记
+let isInitialized = false;
+let unloadCleanupHandler = null;
+
+// 【根本修复】页面加载时立即重置所有单例状态
+// 在模块加载时执行，确保每次刷新页面都是干净状态（而非等到卸载时清理）
+(function resetSingletonsOnPageLoad() {
+    if (typeof window === 'undefined') return;
+    
+    // 只在新页面加载时执行（document.readyState === 'loading'）
+    // 如果页面已经加载完成，说明是正常使用，不重置
+    if (document.readyState === 'loading') {
+        try {
+            // 重置事件管理器（清理可能残留的监听器）
+            eventManager.reset();
+            // 重置定时器管理器（清理可能残留的定时器）
+            timerManager.reset();
+            // 重置全局懒加载器（使用resetLazyLoader函数）
+            resetLazyLoader();
+            
+            // 【修复】清理main.js中的全局数组和缓存对象
+            globalEventIds.length = 0;
+            cachedDOMQueries.shapeButtons = null;
+            
+            // 【修复】重置initializer单例的内部状态
+            if (initializer && typeof initializer.reset === 'function') {
+                initializer.reset();
+            }
+            
+            // 【修复】重置errorHandler（移除可能累积的事件监听器）
+            if (errorHandler && typeof errorHandler.reset === 'function') {
+                errorHandler.reset();
+            }
+            
+            // 清理可能残留的window全局变量
+            if (window.state && window.state.userData) {
+                window.state.userData = null;
+            }
+        } catch (error) {
+            console.warn('⚠️ 重置单例状态失败:', error);
+        }
+    }
+})();
+
+// Initialize state with default data (使用浅拷贝，后续会被loadUserData替换)
+state.userData = { ...STATIC_CONFIG.DEFAULT_USER_DATA };
 
 // =================================================================
 // 初始化函数
@@ -33,6 +89,27 @@ state.userData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
  * 负责协调各个模块的初始化顺序
  */
 function init() {
+    // 【修复】防止重复初始化，避免刷新页面时资源累积
+    if (isInitialized) {
+        console.warn('⚠️ 应用已初始化，跳过重复初始化。如需重新初始化，请先调用cleanup()');
+        return;
+    }
+    
+    // 【修复】清理旧的beforeunload监听器（如果存在），避免重复添加
+    if (unloadCleanupHandler) {
+        window.removeEventListener('beforeunload', unloadCleanupHandler);
+        unloadCleanupHandler = null;
+    }
+    
+    // 【注意】单例重置已在模块加载时完成（上面的resetSingletonsOnPageLoad）
+    // 这里只需要确保当前状态是干净的即可
+    
+    // 【修复】确保全局数组是空的（双重保险）
+    globalEventIds.length = 0;
+    
+    // 标记为已初始化
+    isInitialized = true;
+    
     // 1. 初始化全局错误处理器
     errorHandler.init();
     
@@ -45,21 +122,23 @@ function init() {
     // 4. 初始化图标预览功能
     initializer.initIconPreviews();
     
-    // 验证关键DOM元素是否正确缓存（优化：使用循环批量检查）
-    const criticalElements = [
-        { name: 'Engine size slider', element: dom.engineSizeSlider },
-        { name: 'Engine size value', element: dom.engineSizeValue },
-        { name: 'Engine spacing slider', element: dom.engineSpacingSlider },
-        { name: 'Engine spacing value', element: dom.engineSpacingValue }
-    ];
-    
-    criticalElements.forEach(({ name, element }) => {
-        if (element) {
-            logger.debug(`${name}:`, element);
-        } else {
-            logger.error(`${name} not found in DOM cache`);
-        }
-    });
+    // 验证关键DOM元素是否正确缓存（仅调试模式执行，减少生产环境开销）
+    if (config && config.debug && config.debug.enableConsole) {
+        const criticalElements = [
+            { name: 'Engine size slider', element: dom.engineSizeSlider },
+            { name: 'Engine size value', element: dom.engineSizeValue },
+            { name: 'Engine spacing slider', element: dom.engineSpacingSlider },
+            { name: 'Engine spacing value', element: dom.engineSpacingValue }
+        ];
+        
+        criticalElements.forEach(({ name, element }) => {
+            if (element) {
+                logger.debug(`${name}:`, element);
+            } else {
+                logger.error(`${name} not found in DOM cache`);
+            }
+        });
+    }
     
     // 5. 加载用户数据和更新时钟
     core.loadUserData();
@@ -85,13 +164,7 @@ function init() {
     window.core = core;
     window.navigationModule = navigationModule;
     
-    // 10.6 [优化] 效果调节器面板改为懒初始化
-    // 不再在页面加载时立即初始化，而是在首次使用时才创建实例
-    // - 首次打开面板时（openEffectsPanel）会自动初始化
-    // - 应用CSS变量时（applyEffectsCSSVariables）也会自动初始化
-    // 预期收益：节省约30ms初始化时间
-    
-    // 10.7 暴露外观设置CSS变量应用函数（供core.applyAllSettings调用）
+    // 10.6 暴露外观设置CSS变量应用函数（供core.applyAllSettings调用）
     window.applyEffectsCSSVariables = applyEffectsCSSVariables;
 
     // 11. 使用eventManager管理全局事件监听器
@@ -113,7 +186,7 @@ function init() {
         eventManager.add(document.body, 'click', (e) => {
         const target = e.target;
 
-        // 【修复】关闭右键菜单的逻辑：点击菜单外部时关闭，但点击菜单本身或其子元素时不关闭
+        // 关闭右键菜单的逻辑：点击菜单外部时关闭，但点击菜单本身或其子元素时不关闭
         // 注意：closest会向上查找，包括元素本身和所有祖先元素
         const isNavContextMenu = target.closest('#nav-context-menu');
         const isNavTabContextMenu = target.closest('#nav-tab-context-menu');
@@ -127,11 +200,25 @@ function init() {
         if (!isNavTabContextMenu) {
             navigationModule.utils.closeTabContextMenu();
         }
-        // 如果点击不在主右键菜单内，则关闭
+        // 如果点击不在主右键菜单内，则关闭（使用DOMHelper）
         if (!isMainContextMenu && dom.mainContextMenu) {
-            dom.mainContextMenu.classList.remove('visible');
-            dom.mainContextMenu.style.opacity = '0';
-            dom.mainContextMenu.style.visibility = 'hidden';
+            DOMHelper.toggleVisibility(dom.mainContextMenu, false, {
+                useOpacity: true,
+                useVisibility: true,
+                className: 'visible'
+            });
+        }
+        
+        // 批量编辑模式：点击非图标区域时退出
+        if (navigationModule.state.isBatchEditMode) {
+            const clickedNavItem = target.closest('.nav-item');
+            const clickedContextMenu = target.closest('#main-context-menu, #nav-context-menu, #nav-tab-context-menu');
+            const clickedNavTab = target.closest('.nav-tab');
+            
+            // 如果没有点击图标、右键菜单或导航标签，则退出批量编辑模式
+            if (!clickedNavItem && !clickedContextMenu && !clickedNavTab) {
+                navigationModule.utils.toggleBatchEditMode();
+            }
         }
         
         // [增强] 点击菜单外部关闭自定义选择器菜单（如时间/文件菜单）
@@ -140,29 +227,43 @@ function init() {
         // 触发器：带[data-dynamic-menu]或.custom-select-wrapper button
         const isDynamicMenuTrigger = target.closest('[data-dynamic-menu], .custom-select-wrapper button');
         if (!isDynamicMenu && !isDynamicMenuTrigger) {
-            document.querySelectorAll('.is-dynamic-menu').forEach(menu => {
-                if (menu.parentNode) menu.parentNode.removeChild(menu);
-            });
+            DOMHelper.removeDynamicMenus();
         }
 
         if (target.closest('.modal-close-btn') || target.classList.contains('modal-overlay')) {
             const modal = target.closest('.modal-overlay');
-            if (modal) modal.classList.remove('visible');
+            if (modal) DOMHelper.toggleVisibility(modal, false, { className: 'visible' });
             return;
         }
 
-        // 【修复】先检查是否有data-action，如果有则优先处理，避免被其他逻辑拦截
-        const actionTarget = target.closest('[data-action]');
+        // 先检查是否有data-action，如果有则优先处理，避免被其他逻辑拦截
+        let actionTarget = target.closest('[data-action]');
         if (actionTarget) {
             const action = actionTarget.dataset.action;
+            logger.debug('检测到data-action元素', { 
+                action, 
+                id: actionTarget.id,
+                className: actionTarget.className,
+                tagName: actionTarget.tagName,
+                inPanel: !!target.closest('#effectsSettingsPanel')
+            });
             // 对于搜索引擎菜单中的按钮，先处理点击事件，再处理菜单关闭
             if (action === 'manage-engines' || action === 'open-settings') {
+                logger.debug('处理manage-engines或open-settings');
+                handleActionClick(e);
+                return;
+            }
+            // 对于图标源测试按钮，立即处理并返回，避免被其他逻辑影响
+            if (action === 'test-icon-sources' || action === 'test-engine-icon-sources' || action === 'test-scope-icon-sources') {
+                logger.debug('处理图标源测试按钮点击', { action, buttonId: actionTarget.id });
+                e.preventDefault(); // 阻止默认行为
+                e.stopPropagation(); // 阻止事件冒泡
                 handleActionClick(e);
                 return;
             }
         }
 
-        // 【修复】统一的下拉菜单关闭逻辑：点击非菜单区域时关闭
+        // 统一的下拉菜单关闭逻辑：点击非菜单区域时关闭
         // 注意：菜单内的按钮点击应该由handleActionClick处理，不要在这里提前关闭菜单
         const isInDropdownMenu = target.closest('.dropdown-menu');
         const isInHeaderContainer = target.closest('.header-container');
@@ -235,15 +336,26 @@ function init() {
                 const menu = document.querySelector(`[aria-controls*="dynamic-menu-${id}"]`);
                 if (menu) {
                     const activeItem = menu.querySelector('.dropdown-item.active');
-                    if(activeItem) activeItem.classList.remove('active');
                     const newItem = menu.querySelector(`.dropdown-item[data-value="${value}"]`);
-                    if(newItem) newItem.classList.add('active');
+                    if (activeItem && newItem) {
+                        // 使用ButtonGroupHelper统一管理下拉菜单项状态
+                        ButtonGroupHelper.updateActiveState(menu, '.dropdown-item', newItem, ['active']);
+                    } else if (activeItem) {
+                        activeItem.classList.remove('active');
+                    } else if (newItem) {
+                        newItem.classList.add('active');
+                    }
                 }
             };
 
             if (id === 'scope-editor-tab-select') {
-                const tabs = [...new Set(state.userData.scopes.map(s => s.tab || '常用'))];
-                options = tabs.map(t => ({ value: t, text: t }));
+                // 优化：使用for循环+Set去重，避免多次数组创建
+                const tabsSet = new Set();
+                for (let i = 0; i < state.userData.scopes.length; i++) {
+                    const tab = state.userData.scopes[i].tab || '常用';
+                    tabsSet.add(tab);
+                }
+                options = Array.from(tabsSet).map(t => ({ value: t, text: t }));
                 options.push({ value: STATIC_CONFIG.CONSTANTS.NEW_TAB_VALUE, text: '+ 新建标签页...' });
                 onSelect = (value, text) => {
                     customSelectTrigger.dataset.value = value;
@@ -267,23 +379,44 @@ function init() {
                 options = [{value: 'after', text: '之后'}, {value: 'before', text: '之前'}];
             }
 
-            utils.createCustomSelect(customSelectTrigger, options.map(opt => ({value: opt.value || opt.id, text: opt.text || opt.name})), onSelect);
+            // 优化：使用for循环减少临时数组创建
+            const mappedOptions = [];
+            for (let i = 0; i < options.length; i++) {
+                const opt = options[i];
+                mappedOptions.push({ value: opt.value || opt.id, text: opt.text || opt.name });
+            }
+            utils.createCustomSelect(customSelectTrigger, mappedOptions, onSelect);
             return;
         }
 
         // Handle actions using the centralized action handler
-        handleActionClick(e);
+        // 注意：图标源测试按钮已经在上面优先处理并return了，这里只处理其他data-action
+        // 如果上面的actionTarget未定义，重新查找
+        if (!actionTarget) {
+            actionTarget = target.closest('[data-action]');
+        }
+        if (actionTarget) {
+            const action = actionTarget.dataset.action;
+            // 跳过已经处理过的action
+            if (action !== 'manage-engines' && 
+                action !== 'open-settings' && 
+                action !== 'test-icon-sources' && 
+                action !== 'test-engine-icon-sources' && 
+                action !== 'test-scope-icon-sources') {
+                logger.debug('检测到其他data-action按钮，调用handleActionClick', { 
+                    action: action, 
+                    id: actionTarget.id,
+                    className: actionTarget.className 
+                });
+                handleActionClick(e);
+            }
+        }
     }));
 
     // 右键菜单事件
     globalEventIds.push(
         eventManager.add(document.body, 'contextmenu', handlers.globalContextMenuHandler)
     );
-
-    // ===================================================================
-    // [已移除] 旧的外观设置滑块绑定代码
-    // 外观设置已迁移到侧边面板（effects-panel.js），由该模块自行管理滑块绑定
-    // ===================================================================
 
     // 节流函数（用于引擎滑块）
     let pendingUpdate = false;
@@ -308,7 +441,7 @@ function init() {
             parentKey: 'engineSettings',
             childKey: 'size',
             successMessage: '引擎大小已保存',
-            formatValue: (v) => `${v}px`,
+            formatValue: (v) => Formatter.pixels(v),
             useThrottle: false
         }, globalEventIds, throttleSliderUpdate);
     } else {
@@ -324,7 +457,7 @@ function init() {
             parentKey: 'engineSettings',
             childKey: 'spacing',
             successMessage: '引擎间距已保存',
-            formatValue: (v) => `${v}px`,
+            formatValue: (v) => Formatter.pixels(v),
             useThrottle: false
         }, globalEventIds, throttleSliderUpdate);
     } else {
@@ -335,7 +468,12 @@ function init() {
     if (dom.scopeEditorSites) {
         const formatScopeSites = () => {
             const lines = dom.scopeEditorSites.value.split('\n');
-            const formattedLines = lines.map(line => line.trim() ? utils.formatScopeSite(line) : '');
+            // 优化：使用for循环减少临时数组创建
+            const formattedLines = [];
+            for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                formattedLines.push(trimmed ? URLFormatter.formatScopeSite(trimmed) : '');
+            }
             dom.scopeEditorSites.value = formattedLines.join('\n');
         };
         globalEventIds.push(
@@ -348,40 +486,12 @@ function init() {
 
     if (dom.engineUrl) {
         const formatEngineUrl = () => {
-            let url = dom.engineUrl.value.trim();
-            if (url) {
-                // 如果URL不包含协议，添加https://
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = 'https://' + url;
+            if (dom.engineUrl && dom.engineUrl.value) {
+                // 使用URLFormatter统一格式化
+                const formatted = URLFormatter.formatEngineUrl(dom.engineUrl.value);
+                if (formatted !== dom.engineUrl.value) {
+                    dom.engineUrl.value = formatted;
                 }
-                
-                // 如果URL以斜杠结尾，移除结尾的斜杠
-                if (url.endsWith('/')) {
-                    url = url.slice(0, -1);
-                }
-                
-                // 如果URL不包含{query}占位符，根据常见模式添加搜索参数
-                if (!url.includes('{query}')) {
-                    // 检查是否已经是搜索URL格式
-                    if (url.includes('?q=') || url.includes('&q=') || 
-                        url.includes('?s=') || url.includes('&s=') ||
-                        url.includes('?search=') || url.includes('&search=') ||
-                        url.includes('?query=') || url.includes('&query=')) {
-                        // 如果已经包含搜索参数，直接添加{query}占位符
-                        if (url.includes('?')) {
-                            const parts = url.split('?');
-                            const baseUrl = parts[0];
-                            const queryParams = parts[1];
-                            url = `${baseUrl}?${queryParams.replace(/(q|s|search|query)=([^&]*)/, '$1={query}')}`;
-                        }
-                    } else {
-                        // 添加默认的搜索参数
-                        url = url + '/search?q={query}';
-                    }
-                }
-                
-                // 更新输入框的值
-                dom.engineUrl.value = url;
             }
         };
         
@@ -394,8 +504,8 @@ function init() {
         );
         globalEventIds.push(
             eventManager.add(dom.engineUrl, 'paste', () => {
-                // 稍微延迟执行，确保粘贴的内容已经到位
-                setTimeout(formatEngineUrl, 10);
+                // 使用timerManager统一管理定时器
+                timerManager.setTimeout('pasteTimeout', formatEngineUrl, 10);
             })
         );
     }
@@ -417,17 +527,15 @@ function init() {
         document.body.classList.add(`shape-${state.userData.navigationShape}`);
     }
     
-    // 注意：searchEngineMenu 会在 core.applyAllSettings() 中渲染，此处无需重复调用
     
     // Apply saved navigation alignment
+    // 应用保存的对齐方式按钮状态（使用ButtonGroupHelper）
     if (dom.navAlignGroup && state.userData.navigationAlignment) {
         const alignButtons = dom.navAlignGroup.querySelectorAll('[data-action="set-nav-alignment"]');
-        alignButtons.forEach(btn => {
-            btn.classList.remove('active', 'selected');
-            if (btn.dataset.align === state.userData.navigationAlignment) {
-                btn.classList.add('active', 'selected');
-            }
-        });
+        const activeBtn = Array.from(alignButtons).find(btn => btn.dataset.align === state.userData.navigationAlignment);
+        if (activeBtn) {
+            ButtonGroupHelper.updateActiveState(alignButtons, null, activeBtn, ['active', 'selected']);
+        }
     }
     
     // Apply saved navigation density (min-width) slider value
@@ -436,19 +544,18 @@ function init() {
         if (dom.navMinWidthValue) dom.navMinWidthValue.textContent = state.userData.navigationItemMinWidth;
     }
 
-    // [新增] dock栏缩放滑块初始值
+    // dock栏缩放滑块初始值
     if (dom.dockScaleSlider && typeof state.userData.dockScale === 'number') {
         dom.dockScaleSlider.value = state.userData.dockScale;
-        if (dom.dockScaleValue) dom.dockScaleValue.textContent = Number(state.userData.dockScale).toFixed(2);
+        if (dom.dockScaleValue) dom.dockScaleValue.textContent = Formatter.decimal(state.userData.dockScale, 2);
         document.documentElement.style.setProperty('--dock-scale', state.userData.dockScale);
     }
     
-    // 搜索引擎菜单滑块初始值（预设UI，会在数据加载完成后由applyAllSettings更新）
+    // 搜索引擎菜单滑块初始值
     logger.debug('Applying initial engine slider values...');
     logger.debug('User data engine settings:', state.userData?.engineSettings);
     
     // 确保 engineSettings 存在，否则使用默认值
-    // 注意：此时使用的是默认数据，实际值会在loadUserData回调中通过applyAllSettings更新
     if (!state.userData.engineSettings || typeof state.userData.engineSettings !== 'object') {
         state.userData.engineSettings = { size: 16, spacing: 8 };
         logger.debug('Initialized default engine settings');
@@ -459,7 +566,7 @@ function init() {
     if (dom.engineSizeSlider) {
         dom.engineSizeSlider.value = engineSize;
         if (dom.engineSizeValue) {
-            dom.engineSizeValue.textContent = `${engineSize}px`;
+            dom.engineSizeValue.textContent = Formatter.pixels(engineSize);
         }
         utils.engineStyle.applySize(engineSize);
     }
@@ -469,72 +576,72 @@ function init() {
     if (dom.engineSpacingSlider) {
         dom.engineSpacingSlider.value = engineSpacing;
         if (dom.engineSpacingValue) {
-            dom.engineSpacingValue.textContent = `${engineSpacing}px`;
+            dom.engineSpacingValue.textContent = Formatter.pixels(engineSpacing);
         }
         utils.engineStyle.applySpacing(engineSpacing);
     }
 
-    // 【修复】使用事件委托处理形状按钮点击（安全的实现）
-    // 形状按钮可能在外观设置面板中，使用document.body作为委托容器更安全
-    // 但只处理点击.shape-choice元素的情况，避免影响其他元素
+    // 使用事件委托处理形状按钮点击（使用ButtonGroupHelper）
+    const getShapeButtons = () => {
+        if (!cachedDOMQueries.shapeButtons) {
+            cachedDOMQueries.shapeButtons = document.querySelectorAll('.shape-choice');
+        }
+        return cachedDOMQueries.shapeButtons;
+    };
+    
     globalEventIds.push(
         eventManager.delegate(document.body, 'click', '.shape-choice', (e) => {
             const shape = e.target.dataset.shape;
             if (!shape) return;
             
-            // 批量更新所有形状按钮状态（优化性能）
-            const allShapeButtons = document.querySelectorAll('.shape-choice');
-            allShapeButtons.forEach(btn => {
-                btn.classList.toggle('active', btn === e.target);
-                btn.classList.toggle('selected', btn === e.target);
-            });
+            const allShapeButtons = getShapeButtons();
+            DOMHelper.toggleButtonGroup(allShapeButtons, null, e.target, ['active', 'selected']);
             
-            // 批量更新body类名（减少DOM操作）
             document.body.className = document.body.className.replace(/shape-\w+/g, '');
             if (shape !== 'square') {
                 document.body.classList.add(`shape-${shape}`);
             }
             
             state.userData.navigationShape = shape;
-            core.saveUserData(() => utils.showToast('导航形状已保存', 'success'));
+            core.saveUserData(() => {});
         })
     );
     
     // 应用保存的形状按钮状态（初始化时执行一次，延迟执行确保DOM已加载）
-    setTimeout(() => {
-        const allShapeButtons = document.querySelectorAll('.shape-choice');
+    timerManager.setTimeout('shapeInit', () => {
+        const allShapeButtons = getShapeButtons();
         if (allShapeButtons.length > 0) {
-            if (state.userData.navigationShape) {
-                const savedShapeBtn = Array.from(allShapeButtons).find(btn => btn.dataset.shape === state.userData.navigationShape);
-                if (savedShapeBtn) {
-                    allShapeButtons.forEach(btn => {
-                        btn.classList.remove('active', 'selected');
-                    });
-                    savedShapeBtn.classList.add('active', 'selected');
+            // 使用for循环替代Array.from().find()，减少内存分配
+            let savedShapeBtn = null;
+            let squareBtn = null;
+            for (let i = 0; i < allShapeButtons.length; i++) {
+                const btn = allShapeButtons[i];
+                if (state.userData.navigationShape && btn.dataset.shape === state.userData.navigationShape) {
+                    savedShapeBtn = btn;
                 }
-            } else {
-                // 默认选中方形
-                const squareBtn = Array.from(allShapeButtons).find(btn => btn.dataset.shape === 'square');
-                if (squareBtn) squareBtn.classList.add('active', 'selected');
+                if (btn.dataset.shape === 'square') {
+                    squareBtn = btn;
+                }
+            }
+            
+            if (savedShapeBtn) {
+                DOMHelper.toggleButtonGroup(allShapeButtons, null, savedShapeBtn, ['active', 'selected']);
+            } else if (squareBtn) {
+                DOMHelper.toggleButtonGroup(allShapeButtons, null, squareBtn, ['active', 'selected']);
             }
         }
     }, 100);
 
-    // 【优化】导航对齐方式按钮监听器（使用eventManager统一管理）
+    // 导航对齐方式按钮监听器（使用ButtonGroupHelper）
     if (dom.navAlignGroup) {
         globalEventIds.push(
             eventManager.delegate(dom.navAlignGroup, 'click', '[data-action="set-nav-alignment"]', (e) => {
                 const align = e.target.dataset.align;
                 if (!align) return;
                 
-                // 批量更新按钮状态（优化性能）
                 const allAlignButtons = dom.navAlignGroup.querySelectorAll('[data-action="set-nav-alignment"]');
-                allAlignButtons.forEach(btn => {
-                    btn.classList.toggle('active', btn === e.target);
-                    btn.classList.toggle('selected', btn === e.target);
-                });
+                DOMHelper.toggleButtonGroup(allAlignButtons, null, e.target, ['active', 'selected']);
                 
-                // 批量更新导航网格样式（减少重排）
                 if (dom.navigationGrid) {
                     const alignmentStyles = {
                         'left': { marginLeft: '0', marginRight: 'auto' },
@@ -550,50 +657,45 @@ function init() {
                 
                 // 保存用户选择
                 state.userData.navigationAlignment = align;
-                core.saveUserData(() => utils.showToast('导航对齐已保存', 'success'));
+                core.saveUserData(() => {});
             })
         );
     }
 
-    // 添加拖拽事件监听器
-    document.addEventListener('dragover', handlers.globalDragOverHandler);
-    document.addEventListener('dragleave', handlers.globalDragLeaveHandler);
-    document.addEventListener('drop', handlers.globalDropHandler);
+    // 添加拖拽事件监听器（统一管理，避免内存泄漏）
+    globalEventIds.push(
+        eventManager.add(document, 'dragover', handlers.globalDragOverHandler)
+    );
+    globalEventIds.push(
+        eventManager.add(document, 'dragleave', handlers.globalDragLeaveHandler)
+    );
+    globalEventIds.push(
+        eventManager.add(document, 'drop', handlers.globalDropHandler)
+    );
     
-    // AI表单事件监听器
-    document.addEventListener('click', (e) => {
-        // AI表单相关按钮
-        if (e.target.id === 'ai-form-cancel') {
+    // AI表单事件监听器（使用事件委托统一管理）
+    globalEventIds.push(
+        eventManager.delegate(document, 'click', '#ai-form-cancel, #ai-show-in-search-btn, #ai-show-in-favorites-btn', (e) => {
             e.preventDefault();
-            aiSettings.resetForm();
-            return;
-        }
-        
-        // 注意：test-icon-sources-btn 现在由统一的 action handler 处理（data-action="test-icon-sources"）
-        
-        if (e.target.id === 'ai-show-in-search-btn') {
-            e.preventDefault();
-            aiSettings.toggleButton('ai-show-in-search-btn');
-            return;
-        }
-        
-        if (e.target.id === 'ai-show-in-favorites-btn') {
-            e.preventDefault();
-            aiSettings.toggleButton('ai-show-in-favorites-btn');
-            return;
-        }
-        
-    });
+            if (e.target.id === 'ai-form-cancel') {
+                aiSettings.resetForm();
+            } else if (e.target.id === 'ai-show-in-search-btn') {
+                aiSettings.toggleButton('ai-show-in-search-btn');
+            } else if (e.target.id === 'ai-show-in-favorites-btn') {
+                aiSettings.toggleButton('ai-show-in-favorites-btn');
+            }
+        })
+    );
     
-    // AI表单提交
-    document.addEventListener('submit', (e) => {
-        logger.debug('Form submit event detected, target:', e.target);
-        if (e.target.id === 'ai-form') {
+    // AI表单提交事件（统一管理）
+    globalEventIds.push(
+        eventManager.delegate(document, 'submit', '#ai-form', (e) => {
+            logger.debug('Form submit event detected, target:', e.target);
             logger.debug('AI form submit detected, calling saveAI');
             e.preventDefault();
             aiSettings.saveAI();
-        }
-    });
+        })
+    );
     
 
     if (dom.realSearchInput) {
@@ -601,10 +703,12 @@ function init() {
     }
     handlers.updateSearchContainerState();
     
-    // 监听 chrome.storage 变化，当扩展popup添加网站时自动更新
+    // 监听 chrome.storage 变化，当扩展popup添加网站时自动更新（已优化：支持清理，避免内存泄漏）
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
         logger.debug('Chrome storage change listener registered');
-        chrome.storage.onChanged.addListener((changes, areaName) => {
+        
+        // 【内存优化】保存监听器引用，便于后续清理
+        const storageChangeHandler = (changes, areaName) => {
             logger.debug('Storage change detected:', areaName, changes);
             if (areaName === 'local' && changes[STATIC_CONFIG.CONSTANTS.STORAGE_KEY]) {
                 const newValue = changes[STATIC_CONFIG.CONSTANTS.STORAGE_KEY].newValue;
@@ -625,13 +729,118 @@ function init() {
                     navigationModule.render.all();
                 }
             }
+        };
+        
+        chrome.storage.onChanged.addListener(storageChangeHandler);
+        
+        // 【内存优化】保存监听器引用到全局清理函数中，以便页面卸载时清理
+        if (!window._chromeStorageListeners) {
+            window._chromeStorageListeners = [];
+        }
+        window._chromeStorageListeners.push({
+            remove: () => chrome.storage.onChanged.removeListener(storageChangeHandler)
         });
     } else {
         logger.warn('Chrome storage API not available');
     }
     
-    // 注意：右键菜单功能已整合到页面内（handlers.globalContextMenuHandler）
-    // 页面已经有完整的右键菜单系统，在空白处右键即可看到"外观设置"选项
+    // 【P0内存优化】页面卸载时清理所有全局资源（统一管理，只添加一次）
+    unloadCleanupHandler = () => {
+        console.log('🧹 页面即将卸载，清理所有全局资源...');
+        try {
+            // 清理所有定时器
+            timerManager.clearAll();
+            // 清理所有事件监听器
+            eventManager.removeAll();
+            // 清理全局懒加载器
+            try {
+                const lazyLoader = getLazyLoader();
+                if (lazyLoader && lazyLoader.observer && typeof lazyLoader.destroy === 'function') {
+                    lazyLoader.destroy();
+                }
+            } catch (e) {
+                // lazyLoader可能未初始化，忽略错误
+            }
+            // 【修复】清理URL Hider（如果已初始化，调用destroy方法完整清理）
+            try {
+                if (window.urlHider && typeof window.urlHider.destroy === 'function') {
+                    window.urlHider.destroy();
+                } else if (window.urlHider && window.urlHider.observer) {
+                    // 降级处理：如果destroy不存在，至少清理observer
+                    window.urlHider.observer.disconnect();
+                    window.urlHider.observer = null;
+                }
+            } catch (e) {
+                // urlHider可能未初始化
+            }
+            
+            // 【修复】清理window全局变量引用，避免阻止GC
+            try {
+                if (window.state && window.state.userData) {
+                    // 只清理大数据对象，保留state结构
+                    window.state.userData = null;
+                }
+            } catch (e) {
+                console.warn('清理window.state失败:', e);
+            }
+            
+            // 【修复】清理Chrome Storage监听器
+            try {
+                if (window._chromeStorageListeners && Array.isArray(window._chromeStorageListeners)) {
+                    window._chromeStorageListeners.forEach(listener => {
+                        try {
+                            listener.remove();
+                        } catch (e) {
+                            console.warn('清理Chrome Storage监听器失败:', e);
+                        }
+                    });
+                    window._chromeStorageListeners = [];
+                }
+            } catch (e) {
+                console.warn('清理Chrome Storage监听器失败:', e);
+            }
+            
+            // 【修复】重置初始化标记，允许下次重新初始化
+            isInitialized = false;
+        } catch (error) {
+            console.error('⚠️ 全局资源清理失败:', error);
+        }
+    };
+    
+    // 只添加一次beforeunload监听器（使用具名函数，便于后续移除）
+    window.addEventListener('beforeunload', unloadCleanupHandler);
+    
+    // 【新增】使用pagehide作为补充（更可靠，特别是对于bfcache场景）
+    window.addEventListener('pagehide', (event) => {
+        if (event.persisted) {
+            // 页面被放入bfcache（后退/前进缓存），也需要清理资源
+            unloadCleanupHandler();
+        }
+    }, { once: true });
+    
+    // 【P0内存优化】页面隐藏时清理/暂停资源，可见时恢复
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            console.log('📱 页面已隐藏，执行轻量清理...');
+            try {
+                // 清理所有定时器（保留活跃的，仅清理延迟执行的）
+                // timerManager.clearAll(); // 注释掉，避免清理活跃定时器
+                // 清理全局懒加载器（页面隐藏时不销毁，只暂停，因为可能还会恢复）
+                // 注释掉，避免销毁后恢复时出现问题
+                // try {
+                //     const lazyLoader = getLazyLoader();
+                //     if (lazyLoader && typeof lazyLoader.destroy === 'function') {
+                //         lazyLoader.destroy();
+                //     }
+                // } catch (e) {
+                //     // lazyLoader可能未初始化
+                // }
+            } catch (error) {
+                console.warn('⚠️ 清理失败:', error);
+            }
+        }
+    });
+    
 };
 
 // Start the app when the DOM is loaded

@@ -6,12 +6,6 @@ import { cacheModalElements } from '../dom.js';
 export const modalManager = {
     // Modal mapping - maps friendly names to actual DOM IDs
     modalMap: {
-        // 'manageScopes': 已移除，已被侧边面板的搜索Tab替代
-        // 'manageEngines': 已移除，已被侧边面板的搜索Tab替代
-        // 'appearanceSettings': 已移除，已被侧边面板替代
-        // 'settings': 已移除，已被侧边面板的系统Tab替代
-        // 'aiSettings': 已移除，已被侧边面板的搜索Tab替代
-        // 'manageNavGroups': 已移除，已被侧边面板的导航Tab替代
         'manageTimeFilters': 'manage-time-filters-modal',
         'manageFileFilters': 'manage-file-filters-modal'
     },
@@ -33,9 +27,6 @@ export const modalManager = {
             cacheModalElements();
         }
     },
-    
-    // [已移除] bindAppearanceSettingsSliders() 和 showSliderPopout()
-    // 外观设置已迁移到侧边面板（effects-panel.js）
     
     /**
      * Hide a modal by name

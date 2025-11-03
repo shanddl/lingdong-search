@@ -6,6 +6,7 @@ import { utils } from './utils.js';
 import { render } from './ui/render.js';
 import { navigationModule } from './features/navigation.js';
 import { logger } from './logger.js';
+import { timerManager } from './utils/timerManager.js';
 
 // =================================================================
 // 核心功能模块 - 数据加载、保存、设置应用、搜索执行
@@ -28,8 +29,7 @@ function simpleHash(str) {
     return hash;
 }
 
-// 保存操作的防抖机制，防止并发saveUserData调用导致数据覆盖
-let saveDebounceTimer = null;
+// 保存操作的防抖机制，防止并发saveUserData调用导致数据覆盖（使用timerManager统一管理）
 let pendingCallbacks = [];
 const SAVE_DEBOUNCE_DELAY = 800; // 800ms防抖延迟（优化性能，减少频繁I/O和内存占用）
 let lastSavedDataHash = null; // 上次保存的数据哈希，用于检测变化
@@ -45,32 +45,40 @@ export const core = {
      */
     loadUserData: () => {
         storage.get((storedData) => {
-            const defaultData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
+            // 延迟深拷贝：仅在需要恢复默认值时才创建副本，减少内存占用
+            let defaultDataCache = null;
+            const getDefaultData = () => {
+                if (!defaultDataCache) {
+                    defaultDataCache = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
+                }
+                return defaultDataCache;
+            };
+            
             log.debug('Loading user data, storedData:', storedData);
-            log.debug('Default data:', defaultData);
             
             // 修复数据合并逻辑 - 确保分类数据正确保留
             if (storedData) {
+                const defaultData = getDefaultData();
                 // 深度合并导航组数据，确保用户创建的分类不会丢失
                 state.userData = {
                     ...defaultData,
                     ...storedData,
-                    navigationGroups: storedData.navigationGroups || defaultData.navigationGroups,
+                    navigationGroups: storedData.navigationGroups || [...defaultData.navigationGroups],
                     dynamicFilters: { 
                         ...defaultData.dynamicFilters, 
                         ...(storedData.dynamicFilters || {})
                     }
                 };
                 
-                // 验证和修复动态过滤器
+                // 验证和修复动态过滤器（仅在需要恢复时深拷贝）
                 if (!state.userData.dynamicFilters || !state.userData.dynamicFilters.timeRange || 
                     state.userData.dynamicFilters.timeRange.some(r => typeof r === 'object' && r.hasOwnProperty('value'))) {
-                    state.userData.dynamicFilters = defaultData.dynamicFilters;
+                    state.userData.dynamicFilters = getDefaultData().dynamicFilters;
                 }
                 
                 // 验证搜索引擎（添加完整性检查）
                 if (!storedData.searchEngines || !Array.isArray(storedData.searchEngines) || storedData.searchEngines.length === 0) {
-                    state.userData.searchEngines = defaultData.searchEngines;
+                    state.userData.searchEngines = [...getDefaultData().searchEngines];
                     log.debug('Restored default search engines');
                 }
                 
@@ -83,8 +91,9 @@ export const core = {
                     }
                 } else {
                     // 极端情况：searchEngines为空，重置为默认值
-                    state.userData.searchEngines = defaultData.searchEngines;
-                    state.userData.activeSearchEngineId = defaultData.searchEngines[0].id;
+                    const defaultEngines = getDefaultData().searchEngines;
+                    state.userData.searchEngines = [...defaultEngines];
+                    state.userData.activeSearchEngineId = defaultEngines[0].id;
                     log.warn('Search engines was empty, reset to defaults');
                 }
                 
@@ -92,8 +101,9 @@ export const core = {
                 
                 // 验证导航组（添加完整性检查）
                 if (!state.userData.navigationGroups || !Array.isArray(state.userData.navigationGroups) || state.userData.navigationGroups.length === 0) {
-                    state.userData.navigationGroups = defaultData.navigationGroups;
-                    state.userData.activeNavigationGroupId = defaultData.activeNavigationGroupId;
+                    const defaultGroups = getDefaultData().navigationGroups;
+                    state.userData.navigationGroups = [...defaultGroups];
+                    state.userData.activeNavigationGroupId = getDefaultData().activeNavigationGroupId;
                     log.warn('Navigation groups was empty, reset to defaults');
                 } else {
                     // 验证活跃导航组ID
@@ -106,7 +116,8 @@ export const core = {
                 
                 // 验证引擎设置（确保旧版本数据兼容）
                 if (!state.userData.engineSettings || typeof state.userData.engineSettings !== 'object') {
-                    state.userData.engineSettings = defaultData.engineSettings || { size: 16, spacing: 8 };
+                    const defaultSettings = getDefaultData().engineSettings;
+                    state.userData.engineSettings = defaultSettings ? { ...defaultSettings } : { size: 16, spacing: 8 };
                     log.debug('Initialized default engine settings');
                 } else {
                     // 确保 size 和 spacing 字段存在
@@ -144,8 +155,8 @@ export const core = {
 
             } else {
                 // 没有存储数据时使用默认数据并保存
-                state.userData = defaultData;
-                log.debug('No stored data, using default data:', defaultData);
+                state.userData = getDefaultData();
+                log.debug('No stored data, using default data');
                 core.saveUserData((error) => {
                     if (error) {
                         log.error('Failed to save default user data:', error);
@@ -171,36 +182,34 @@ export const core = {
             pendingCallbacks.push(callback);
         }
         
-        // 清除之前的定时器
-        if (saveDebounceTimer) {
-            clearTimeout(saveDebounceTimer);
-        }
+        // 使用timerManager统一管理防抖定时器，避免内存泄漏
+        timerManager.clearTimeout('saveUserData');
         
         // 设置新的定时器
-        saveDebounceTimer = setTimeout(() => {
+        timerManager.setTimeout('saveUserData', () => {
             // activeNavigationGroupId 通过 Proxy 自动同步，无需手动操作
             
             // 保存当前的callbacks列表
             const callbacks = [...pendingCallbacks];
             pendingCallbacks = [];
-            saveDebounceTimer = null;
             
             // 运行时数据验证：在保存前检查数据完整性
             try {
-                // 验证searchEngines数组
+                // 验证searchEngines数组（仅在需要恢复时才深拷贝部分数据）
                 if (!Array.isArray(state.userData.searchEngines) || state.userData.searchEngines.length === 0) {
                     log.warn('Invalid searchEngines detected, restoring defaults');
-                    const defaultData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
-                    state.userData.searchEngines = defaultData.searchEngines;
-                    state.userData.activeSearchEngineId = defaultData.searchEngines[0].id;
+                    const defaultEngines = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.searchEngines));
+                    state.userData.searchEngines = defaultEngines;
+                    state.userData.activeSearchEngineId = defaultEngines[0].id;
                 }
                 
-                // 验证navigationGroups数组
+                // 验证navigationGroups数组（仅在需要恢复时才深拷贝部分数据）
                 if (!Array.isArray(state.userData.navigationGroups) || state.userData.navigationGroups.length === 0) {
                     log.warn('Invalid navigationGroups detected, restoring defaults');
-                    const defaultData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
-                    state.userData.navigationGroups = defaultData.navigationGroups;
-                    state.userData.activeNavigationGroupId = defaultData.activeNavigationGroupId;
+                    const defaultGroups = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.navigationGroups));
+                    const defaultActiveId = STATIC_CONFIG.DEFAULT_USER_DATA.activeNavigationGroupId;
+                    state.userData.navigationGroups = defaultGroups;
+                    state.userData.activeNavigationGroupId = defaultActiveId;
                 }
                 
                 // 验证engineSettings对象
@@ -221,9 +230,30 @@ export const core = {
                 log.error('Data validation error:', validationError);
             }
             
-            // [性能优化] 数据变化检测 - 避免保存相同的数据
-            const dataStr = JSON.stringify(state.userData);
-            const currentHash = simpleHash(dataStr);
+            // 【P0内存优化】数据变化检测 - 使用增量序列化避免全量JSON.stringify占用大量内存
+            // 仅序列化关键变化字段进行哈希比较，而非整个对象
+            let currentHash;
+            try {
+                // 优化：只序列化可能变化的字段，减少内存占用
+                const keyFields = {
+                    navigationGroups: state.userData.navigationGroups,
+                    searchEngines: state.userData.searchEngines,
+                    activeNavigationGroupId: state.userData.activeNavigationGroupId,
+                    activeSearchEngineId: state.userData.activeSearchEngineId,
+                    engineSettings: state.userData.engineSettings,
+                    searchboxTop: state.userData.searchboxTop,
+                    searchboxWidth: state.userData.searchboxWidth,
+                    navigationShape: state.userData.navigationShape,
+                    navigationAlignment: state.userData.navigationAlignment
+                };
+                const keyFieldsStr = JSON.stringify(keyFields);
+                currentHash = simpleHash(keyFieldsStr);
+            } catch (hashError) {
+                // 降级：如果增量序列化失败，使用全量（但应该很少发生）
+                log.warn('Incremental hash failed, using full hash:', hashError);
+                const dataStr = JSON.stringify(state.userData);
+                currentHash = simpleHash(dataStr);
+            }
             
             if (lastSavedDataHash === currentHash) {
                 log.debug('Data unchanged, skipping save');
@@ -238,15 +268,40 @@ export const core = {
                 return;
             }
             
-            // [性能监控] 检测数据大小
-            const dataSize = dataStr.length;
-            if (dataSize > 1024 * 1024) { // 大于1MB
-                log.warn('User data size is large:', Math.round(dataSize / 1024), 'KB');
+            // 【P0内存优化】延迟序列化 - 只在确认需要保存时才序列化完整数据
+            // 避免在防抖期间重复序列化占用内存
+            let dataStr;
+            let dataSize = 0;
+            try {
+                dataStr = JSON.stringify(state.userData);
+                dataSize = dataStr.length;
+                
+                // [性能监控] 检测数据大小
+                if (dataSize > 1024 * 1024) { // 大于1MB
+                    log.warn('User data size is large:', Math.round(dataSize / 1024), 'KB');
+                }
+            } catch (stringifyError) {
+                log.error('Failed to stringify user data:', stringifyError);
+                // 序列化失败，调用callbacks返回错误
+                callbacks.forEach(cb => {
+                    try {
+                        cb(stringifyError);
+                    } catch (e) {
+                        log.error('Callback error in saveUserData:', e);
+                    }
+                });
+                return;
             }
             
             // 执行实际的保存操作
             const saveStartTime = performance.now();
-            storage.set(state.userData, (error) => {
+            // 【修复】storage.set内部会再次序列化，所以传递原始对象即可
+            // dataStr在这里已经不再需要，可以立即释放
+            const dataToSave = state.userData;
+            // 注意：不在这里释放dataStr，因为它可能在某些错误场景下还需要
+            // 但可以在storage.set调用后立即释放（通过作用域自然释放）
+            
+            storage.set(dataToSave, (error) => {
                 if (!error) {
                     lastSavedDataHash = currentHash; // 保存成功，更新哈希
                     const saveTime = Math.round(performance.now() - saveStartTime);
@@ -348,8 +403,8 @@ export const core = {
         navigationModule.render.all();
         
         // 应用保存的外观设置CSS变量（wallpaperEffects等）
-        // 使用setTimeout确保effects-panel已初始化
-        setTimeout(() => {
+        // 使用timerManager确保effects-panel已初始化（延迟执行，避免初始化顺序问题）
+        timerManager.setTimeout('applyEffectsCSSVariables', () => {
             if (typeof window.applyEffectsCSSVariables === 'function') {
                 window.applyEffectsCSSVariables();
             }

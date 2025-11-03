@@ -358,6 +358,22 @@ class IndexedDBStorage {
             return false;
         }
     }
+
+    /**
+     * 关闭数据库连接（已优化：避免连接泄漏）
+     * @returns {void}
+     */
+    close() {
+        if (this.db) {
+            try {
+                this.db.close();
+                this.db = null;
+                console.log('✅ IndexedDB连接已关闭');
+            } catch (error) {
+                console.error('❌ IndexedDB关闭失败:', error);
+            }
+        }
+    }
 }
 
 // 创建单例

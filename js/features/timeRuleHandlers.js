@@ -99,7 +99,7 @@ export const timeRuleHandlers = {
         }
 
         core.saveUserData(err => {
-            if (err) return utils.showToast('保存失败', 'error');
+            if (err) return;
             render.dynamicFilterManagement('timeRange');
             timeRuleHandlers.resetForm();
         });

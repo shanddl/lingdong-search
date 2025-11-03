@@ -108,8 +108,7 @@ export const managementHandlers = {
         }
 
         core.saveUserData(err => {
-            if (err) return utils.showToast('保存失败', 'error');
-            utils.showToast('保存成功!', 'success');
+            if (err) return;
             render.scopeManagementModal();
             render.scopeMenu();
             managementHandlers.showScopeList();
@@ -123,8 +122,7 @@ export const managementHandlers = {
                 state.userData.scopes = state.userData.scopes.filter(s => s.id !== id);
                 state.userData.favoriteScopes = state.userData.favoriteScopes.filter(favId => favId !== id);
                 core.saveUserData(err => {
-                    if(err) return utils.showToast('删除失败', 'error');
-                    utils.showToast('删除成功', 'success');
+                    if(err) return;
                     render.scopeManagementModal();
                     render.scopeMenu();
                 });
@@ -197,8 +195,7 @@ export const managementHandlers = {
             state.userData.searchEngines.push(newEngine);
         }
         core.saveUserData(err => {
-            if(err) return utils.showToast('保存引擎失败', 'error');
-            utils.showToast('引擎已保存', 'success');
+            if(err) return;
             render.engineManagementModal();
             render.searchEngineSwitcher();
             managementHandlers.resetEngineForm();

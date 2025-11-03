@@ -7,6 +7,7 @@ import { authManager } from './authManager.js';
 import { storage } from '../storage.js';
 import { logger } from '../logger.js';
 import { state } from '../state.js';
+import { timerManager } from '../utils/timerManager.js';
 
 const log = logger.module('SyncManager');
 
@@ -15,7 +16,7 @@ export const syncManager = {
     lastSyncTime: null,
     syncError: null,
     autoSyncEnabled: true,
-    syncInterval: null,
+    // syncInterval已移除，现在使用timerManager统一管理
 
     /**
      * 初始化同步管理器
@@ -183,15 +184,14 @@ export const syncManager = {
     },
 
     /**
-     * 启动自动同步
+     * 启动自动同步（使用timerManager统一管理）
      */
     startAutoSync() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-        }
+        // 使用timerManager统一管理定时器，避免内存泄漏
+        timerManager.clearInterval('syncAutoSync');
 
         // 每5分钟检查一次
-        this.syncInterval = setInterval(async () => {
+        timerManager.setInterval('syncAutoSync', async () => {
             if (this.autoSyncEnabled && authManager.isLoggedIn()) {
                 log.debug('执行自动同步');
                 await this.pushToCloud(state.userData);
@@ -202,14 +202,11 @@ export const syncManager = {
     },
 
     /**
-     * 停止自动同步
+     * 停止自动同步（使用timerManager统一管理）
      */
     stopAutoSync() {
-        if (this.syncInterval) {
-            clearInterval(this.syncInterval);
-            this.syncInterval = null;
-            log.info('自动同步已停止');
-        }
+        timerManager.clearInterval('syncAutoSync');
+        log.info('自动同步已停止');
     },
 
     /**

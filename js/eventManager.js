@@ -124,15 +124,28 @@ class EventManager {
     getCount() {
         return this.listeners.size;
     }
+    
+    /**
+     * 【新增】重置管理器状态（用于页面刷新时）
+     * 清理所有监听器并重置内部状态，但保留实例本身
+     */
+    reset() {
+        this.removeAll();
+        this.idCounter = 0;
+    }
 }
 
 // 创建全局事件管理器实例
 export const eventManager = new EventManager();
 
-// 页面卸载时清理所有事件监听器
-if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
-        eventManager.removeAll();
-    });
+// 【根本修复】页面加载时立即重置，确保每次刷新都是干净状态
+// 在DOMContentLoaded之前执行，避免与页面卸载时的清理冲突
+if (typeof window !== 'undefined' && document.readyState === 'loading') {
+    // 页面正在加载，重置单例状态
+    eventManager.reset();
 }
+
+// 【修复】移除这里的beforeunload监听器，统一在main.js中管理
+// 避免刷新页面时监听器累积（每次模块加载都会添加新的监听器）
+// 统一清理逻辑由main.js的beforeunload处理，确保只添加一次
 

@@ -9,6 +9,10 @@ import { sanitizer, domSafe, validator } from '../security.js';
 import { logger } from '../logger.js';
 import { aiManager } from './ai-manager.js';
 import { eventManager } from '../eventManager.js';
+import { DOMHelper } from '../utils/domHelper.js';
+import { ButtonGroupHelper } from '../utils/buttonGroupHelper.js';
+import { iconSourceTester } from '../utils/iconHelper.js';
+import { timerManager } from '../utils/timerManager.js';
 
 // 存储导航模块的事件监听器ID
 const navigationEventIds = [];
@@ -64,7 +68,11 @@ export const navigationModule = {
         dragOverTabId: null,
         // 添加拖放相关的状态变量
         draggedTab: null,
-        startingIndex: null
+        startingIndex: null,
+        // 批量编辑模式相关状态
+        isBatchEditMode: false,
+        selectedItems: new Set(), // 存储选中项ID的Set
+        draggedItemIds: [] // 批量拖拽时存储多个选中项ID
     },
     
     utils: {
@@ -75,7 +83,7 @@ export const navigationModule = {
         closeContextMenu: () => {
             // 【修复】统一关闭逻辑，重置样式确保菜单完全隐藏
             if (dom.navContextMenu) {
-                dom.navContextMenu.classList.remove('visible');
+                DOMHelper.toggleVisibility(dom.navContextMenu, false, { className: 'visible' });
                 dom.navContextMenu.style.opacity = '0';
                 dom.navContextMenu.style.visibility = 'hidden';
             }
@@ -83,9 +91,78 @@ export const navigationModule = {
         closeTabContextMenu: () => {
             // 【修复】统一关闭逻辑，重置样式确保菜单完全隐藏
             if (dom.navTabContextMenu) {
-                dom.navTabContextMenu.classList.remove('visible');
+                DOMHelper.toggleVisibility(dom.navTabContextMenu, false, { className: 'visible' });
                 dom.navTabContextMenu.style.opacity = '0';
                 dom.navTabContextMenu.style.visibility = 'hidden';
+            }
+        },
+        /**
+         * 切换批量编辑模式
+         */
+        toggleBatchEditMode: () => {
+            const newMode = !navigationModule.state.isBatchEditMode;
+            navigationModule.state.isBatchEditMode = newMode;
+            
+            // 如果退出批量编辑模式，清空选中项
+            if (!newMode) {
+                navigationModule.state.selectedItems.clear();
+            }
+            
+            navigationModule.utils.updateBatchEditMode();
+        },
+        /**
+         * 更新批量编辑模式的UI状态
+         */
+        updateBatchEditMode: () => {
+            const { isBatchEditMode, selectedItems } = navigationModule.state;
+            
+            // 延迟执行，确保DOM已更新（在渲染之后）
+            requestAnimationFrame(() => {
+                const navItems = dom.navigationGrid?.querySelectorAll('.nav-item') || [];
+                
+                if (isBatchEditMode) {
+                    // 进入批量编辑模式
+                    document.body.classList.add('batch-edit-mode');
+                    navItems.forEach(item => {
+                        item.classList.add('batch-editable');
+                        // 确保可以拖拽
+                        item.draggable = true;
+                        // 恢复选中状态的视觉反馈
+                        const itemId = item.dataset.itemId;
+                        if (itemId && selectedItems.has(itemId)) {
+                            item.classList.add('batch-selected');
+                        }
+                    });
+                } else {
+                    // 退出批量编辑模式
+                    document.body.classList.remove('batch-edit-mode');
+                    selectedItems.clear(); // 清空选中项
+                    navItems.forEach(item => {
+                        item.classList.remove('batch-editable', 'batch-selected');
+                        // 保持拖拽功能（原有逻辑中导航项支持拖拽）
+                        item.draggable = true;
+                    });
+                }
+            });
+        },
+        /**
+         * 切换导航项的选中状态
+         */
+        toggleItemSelection: (itemId) => {
+            const { selectedItems } = navigationModule.state;
+            if (!itemId) return;
+            
+            const item = Array.from(dom.navigationGrid?.querySelectorAll('.nav-item') || [])
+                .find(navItem => navItem.dataset.itemId === itemId);
+            
+            if (!item) return;
+            
+            if (selectedItems.has(itemId)) {
+                selectedItems.delete(itemId);
+                item.classList.remove('batch-selected');
+            } else {
+                selectedItems.add(itemId);
+                item.classList.add('batch-selected');
             }
         },
         // [NEW] Complete rewrite of the edit modal
@@ -244,81 +321,35 @@ export const navigationModule = {
                 }
             });
 
-            // 添加测试图标源按钮事件
-            testIconBtn.addEventListener('click', () => {
+            // 添加测试图标源按钮事件（使用iconSourceTester统一处理）
+            testIconBtn.addEventListener('click', async () => {
                 const urlValue = urlGroup.input.value.trim();
                 if (!urlValue) {
-                    utils.showToast('请先输入网站地址', 'error');
                     return;
                 }
 
-                try {
-                    const iconSourcesList = document.getElementById(`edit-nav-icon-sources-list-${item.id}`);
-                    const iconSourcesContent = document.getElementById(`edit-nav-icon-sources-content-${item.id}`);
-                    
-                    if (!iconSourcesList || !iconSourcesContent) {
-                        utils.showToast('图标源测试界面未找到', 'error');
-                        return;
-                    }
-
-                    iconSourcesList.style.display = 'block';
-                    // 【安全性优化】使用textContent替代innerHTML
-                    iconSourcesContent.textContent = '';
-                    const loadingDiv = document.createElement('div');
-                    loadingDiv.style.color = 'var(--text-secondary)';
-                    loadingDiv.textContent = '正在测试图标源...';
-                    iconSourcesContent.appendChild(loadingDiv);
-
-                    const sources = aiManager.getIconSources(urlValue);
-                    
-                    if (sources.length === 0) {
-                        iconSourcesContent.textContent = '';
-                        const errorDiv = document.createElement('div');
-                        errorDiv.style.color = 'var(--text-secondary)';
-                        errorDiv.textContent = '无法获取图标源';
-                        iconSourcesContent.appendChild(errorDiv);
-                        utils.showToast('无法获取图标源', 'error');
-                        return;
-                    }
-
-                    iconSourcesContent.textContent = '';
-
-                    sources.forEach((source) => {
-                        const sourceItem = document.createElement('div');
-                        sourceItem.className = 'icon-source-item';
-                        
-                        // 【安全性优化】使用createElement替代innerHTML
-                        const img = document.createElement('img');
-                        img.src = sanitizer.sanitizeIconUrl(source.url);
-                        img.onerror = function() { this.style.display = 'none'; };
-                        
-                        const nameSpan = document.createElement('span');
-                        nameSpan.style.color = 'var(--text-primary)';
-                        nameSpan.textContent = source.name;
-                        
-                        const descSpan = document.createElement('span');
-                        descSpan.style.color = 'var(--text-secondary)';
-                        descSpan.style.fontSize = '10px';
-                        descSpan.textContent = source.description;
-                        
-                        sourceItem.appendChild(img);
-                        sourceItem.appendChild(nameSpan);
-                        sourceItem.appendChild(descSpan);
-                        
-                        sourceItem.addEventListener('click', () => {
-                            iconGroup.input.value = source.url;
-                            currentIcon = source.url;
-                            previewImg.src = sanitizer.sanitizeIconUrl(source.url);
-                            utils.showToast(`已选择: ${source.name}`, 'success');
-                        });
-                        
-                        iconSourcesContent.appendChild(sourceItem);
-                    });
-                    
-                    utils.showToast(`找到 ${sources.length} 个图标源`, 'success');
-                } catch (error) {
-                    logger.error('测试图标源失败:', error);
-                    utils.showToast('测试图标源失败: ' + error.message, 'error');
+                await iconSourceTester.test(
+                    urlValue,
+                    urlGroup.input.id || `edit-nav-url-${item.id}`,
+                    `edit-nav-icon-sources-list-${item.id}`,
+                    `edit-nav-icon-sources-content-${item.id}`,
+                    iconGroup.input.id || `edit-nav-icon-${item.id}`,
+                    previewImg.id || `edit-nav-icon-preview-${item.id}`
+                );
+                
+                // 监听图标选择事件（如果iconSourceTester未自动处理）
+                const iconSourcesContent = document.getElementById(`edit-nav-icon-sources-content-${item.id}`);
+                if (iconSourcesContent) {
+                    iconSourcesContent.addEventListener('click', (e) => {
+                        const sourceItem = e.target.closest('.icon-source-item');
+                        if (sourceItem) {
+                            // iconSourceTester已经处理了点击事件，这里只需要更新currentIcon
+                            const img = sourceItem.querySelector('img');
+                            if (img && img.src) {
+                                currentIcon = img.src;
+                            }
+                        }
+                    }, { once: true });
                 }
             });
 
@@ -332,7 +363,6 @@ export const navigationModule = {
                 ]);
                 
                 if (!validation.valid) {
-                    utils.showToast(validation.errors[0].message, 'error');
                     return;
                 }
                 
@@ -406,7 +436,12 @@ export const navigationModule = {
                             tab.textContent = group.name;
                         }
                         // 更新active状态
-                        tab.classList.toggle('active', group.id === state.activeNavigationGroupId);
+                        // 使用ButtonGroupHelper统一管理active状态
+                        if (group.id === state.activeNavigationGroupId) {
+                            tab.classList.add('active');
+                        } else {
+                            tab.classList.remove('active');
+                        }
                     }
                 });
                 
@@ -549,13 +584,19 @@ export const navigationModule = {
                 requestAnimationFrame(() => {
                     dom.navigationGrid.style.opacity = '1';
                     
-                    // 批量移除过渡和更新标志（减少重排）
-                    setTimeout(() => {
+                    // 批量移除过渡和更新标志（减少重排）（使用timerManager统一管理，避免内存泄漏）
+                    timerManager.clearTimeout('navigation-grid-style-reset');
+                    timerManager.setTimeout('navigation-grid-style-reset', () => {
                         Object.assign(dom.navigationGrid.style, {
                             opacity: '',
                             transition: ''
                         });
                         document.body.removeAttribute('data-updating');
+                        
+                        // 如果处于批量编辑模式，在渲染完成后更新批量编辑状态
+                        if (navigationModule.state.isBatchEditMode) {
+                            navigationModule.utils.updateBatchEditMode();
+                        }
                     }, 200);
                 });
             });
@@ -564,11 +605,29 @@ export const navigationModule = {
             if (!dom.navContextMenu) return;
             const menu = dom.navContextMenu;
             
-            const menuItems = [
-                { text: '编辑', action: 'edit-nav-item', elementType: 'button' },
-                { type: 'divider' },
-                { text: '删除', action: 'delete-nav-item', elementType: 'button', color: 'var(--red)' }
-            ];
+            const { isBatchEditMode, selectedItems } = navigationModule.state;
+            const selectedCount = selectedItems.size;
+            
+            const menuItems = [];
+            
+            // 批量编辑模式下，如果有选中项，显示批量删除选项
+            if (isBatchEditMode && selectedCount > 0) {
+                menuItems.push({ 
+                    text: `批量删除 (${selectedCount})`, 
+                    action: 'delete-nav-item', 
+                    elementType: 'button', 
+                    color: 'var(--red)' 
+                });
+            } else if (!isBatchEditMode) {
+                // 普通模式下显示编辑和删除
+                menuItems.push(
+                    { text: '编辑', action: 'edit-nav-item', elementType: 'button' },
+                    { type: 'divider' },
+                    { text: '删除', action: 'delete-nav-item', elementType: 'button', color: 'var(--red)' }
+                );
+            }
+            
+            if (menuItems.length === 0) return;
             
             menu.innerHTML = '';
             menu.appendChild(utils.dom.createContextMenuItems(menuItems));
@@ -666,7 +725,20 @@ export const navigationModule = {
                 navigationEventIds.push(
                     eventManager.delegate(dom.navigationGrid, 'click', '.nav-item', (e) => {
                         e.preventDefault();
-                        const url = e.target.closest('.nav-item')?.dataset.url;
+                        const navItem = e.target.closest('.nav-item');
+                        if (!navItem) return;
+                        
+                        // 批量编辑模式：切换选中状态
+                        if (navigationModule.state.isBatchEditMode) {
+                            const itemId = navItem.dataset.itemId;
+                            if (itemId) {
+                                navigationModule.utils.toggleItemSelection(itemId);
+                            }
+                            return;
+                        }
+                        
+                        // 普通模式：打开链接
+                        const url = navItem.dataset.url;
                         if (url) {
                             window.open(url, '_blank');
                         }
@@ -680,7 +752,7 @@ export const navigationModule = {
                     eventManager.add(dom.navigationGrid, 'dragstart', navigationModule.handlers.onDragStart)
                 );
                 navigationEventIds.push(
-                    eventManager.add(dom.navigationGrid, 'dragover', e => e.preventDefault())
+                    eventManager.add(dom.navigationGrid, 'dragover', navigationModule.handlers.onDragOver)
                 );
                 navigationEventIds.push(
                     eventManager.add(dom.navigationGrid, 'drop', navigationModule.handlers.onDrop)
@@ -688,7 +760,36 @@ export const navigationModule = {
                 // 清理拖拽样式
                 navigationEventIds.push(
                     eventManager.add(dom.navigationGrid, 'dragend', (e) => {
-                        e.target.closest('.nav-item')?.classList.remove('dragging');
+                        const item = e.target.closest('.nav-item');
+                        if (item) {
+                            item.classList.remove('dragging');
+                            // 恢复pointer-events
+                            item.style.pointerEvents = '';
+                        }
+                        
+                        // 清理拖拽标记
+                        document.body.removeAttribute('data-dragging');
+                        if (dom.navigationGrid) {
+                            dom.navigationGrid.removeAttribute('data-dragging');
+                        }
+                        
+                        // 清理所有transform和样式
+                        const allItems = dom.navigationGrid.querySelectorAll('.nav-item');
+                        allItems.forEach(item => {
+                            if (item.style.transform) {
+                                item.style.transform = '';
+                                item.style.willChange = '';
+                            }
+                            // 确保pointer-events恢复
+                            if (item.style.pointerEvents === 'none') {
+                                item.style.pointerEvents = '';
+                            }
+                        });
+                        
+                        // 重置状态
+                        navigationModule.state.draggedItemIds = [];
+                        navigationModule.state.draggedItemId = null;
+                        navigationModule.state.draggedItem = null;
                     })
                 );
             }
@@ -790,14 +891,25 @@ export const navigationModule = {
                 // 使用事件目标而非查询所有tabs，减少DOM操作
                 if (dom.navigationTabs) {
                     const allTabs = dom.navigationTabs.querySelectorAll('.nav-tab');
-                    allTabs.forEach(t => {
-                        t.classList.toggle('active', t.dataset.groupId === targetGroupId);
-                    });
+                    // 使用ButtonGroupHelper统一管理tab状态
+                    const activeTab = Array.from(allTabs).find(t => t.dataset.groupId === targetGroupId);
+                    if (activeTab) {
+                        ButtonGroupHelper.updateActiveState(allTabs, null, activeTab, ['active'], (btn) => btn.dataset.groupId);
+                    }
+                }
+                
+                // 切换分类时，如果处于批量编辑模式，清空选中项（因为选中项属于不同的分类）
+                if (navigationModule.state.isBatchEditMode) {
+                    navigationModule.state.selectedItems.clear();
                 }
                 
                 // 立即渲染grid（异步执行以避免阻塞）
                 requestAnimationFrame(() => {
                     navigationModule.render.grid();
+                    // 如果处于批量编辑模式，重新应用批量编辑样式
+                    if (navigationModule.state.isBatchEditMode) {
+                        navigationModule.utils.updateBatchEditMode();
+                    }
                 });
                 
                 // 异步保存，不阻塞UI更新
@@ -869,23 +981,53 @@ export const navigationModule = {
             navigationModule.utils.closeTabContextMenu();
         },
         onItemDelete: (itemId) => {
-            // 使用安全的确认对话框
+            const { isBatchEditMode, selectedItems } = navigationModule.state;
+            
+            // 批量编辑模式：批量删除选中的项
+            if (isBatchEditMode && selectedItems.size > 0) {
+                const itemsToDelete = Array.from(selectedItems);
+                const count = itemsToDelete.length;
+                
+                // 使用安全的确认对话框
+                domSafe.showConfirm(
+                    `您确定要删除 ${count} 个导航项吗？\n此操作无法撤销。`,
+                    () => {
+                        const group = getGroupById(state.activeNavigationGroupId);
+                        if (group) {
+                            group.items = group.items.filter(i => !itemsToDelete.includes(i.id));
+                            updateNavigationGroupsMap(); // 更新缓存
+                            core.saveUserData((error) => {
+                                if (error) {
+                                } else {
+                                    navigationModule.render.grid();
+                                    
+                                    // 完成操作后自动退出批量编辑模式
+                                    navigationModule.utils.toggleBatchEditMode();
+                                }
+                            });
+                        }
+                    }
+                );
+                return;
+            }
+            
+            // 普通模式：删除单个项
             domSafe.showConfirm(
                 '您确定要删除这个导航项吗？\n此操作无法撤销。',
                 () => {
-                const group = getGroupById(state.activeNavigationGroupId);
-                if (group) {
-                    group.items = group.items.filter(i => i.id !== itemId);
-                    updateNavigationGroupsMap(); // 更新缓存
-                    core.saveUserData((error) => {
-                        if (error) {
-                            utils.showToast('删除失败: ' + error.message, 'error');
-                        } else {
-                            utils.showToast('删除成功', 'success');
-                            navigationModule.render.grid();
-                        }
-                    });
-                }
+                    const group = getGroupById(state.activeNavigationGroupId);
+                    if (group) {
+                        group.items = group.items.filter(i => i.id !== itemId);
+                        updateNavigationGroupsMap(); // 更新缓存
+                        core.saveUserData((error) => {
+                            if (error) {
+('删除失败: ' + error.message, 'error');
+                            } else {
+('删除成功', 'success');
+                                navigationModule.render.grid();
+                            }
+                        });
+                    }
                 }
             );
         },
@@ -924,10 +1066,10 @@ export const navigationModule = {
                 updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData((error) => {
                     if (error) {
-                        utils.showToast('保存失败: ' + error.message, 'error');
+('保存失败: ' + error.message, 'error');
                         
                     } else {
-                        utils.showToast('保存成功', 'success');
+('保存成功', 'success');
                         navigationModule.render.all();
                     }
                 });
@@ -936,38 +1078,242 @@ export const navigationModule = {
         onDragStart: (e) => {
             const item = e.target.closest('.nav-item');
             if (item) {
-                navigationModule.state.draggedItemId = item.dataset.itemId;
+                const { isBatchEditMode, selectedItems } = navigationModule.state;
+                const itemId = item.dataset.itemId;
+                
+                // 批量编辑模式：如果当前项未选中，则将其加入选中列表并拖拽所有选中项；如果已选中，拖拽所有选中项
+                if (isBatchEditMode) {
+                    // 如果拖拽的项未在选中列表中，将其加入选中列表（不清空其他选中项）
+                    if (!selectedItems.has(itemId)) {
+                        selectedItems.add(itemId);
+                        navigationModule.utils.toggleItemSelection(itemId);
+                    }
+                    // 批量拖拽：存储所有选中项的ID（至少包含当前项）
+                    navigationModule.state.draggedItemIds = Array.from(selectedItems);
+                    // 确保当前项在列表中（防止selectedItems为空的情况）
+                    if (navigationModule.state.draggedItemIds.length === 0) {
+                        navigationModule.state.draggedItemIds = [itemId];
+                    }
+                } else {
+                    // 单项目拖拽
+                    navigationModule.state.draggedItemIds = [itemId];
+                }
+                
+                navigationModule.state.draggedItemId = itemId; // 保持向后兼容
+                navigationModule.state.draggedItem = item;
                 e.dataTransfer.effectAllowed = 'move';
-                // 添加 dragging 样式
-                item.classList.add('dragging');
+                
+                // Infinity风格：创建美观的拖拽图像
+                const rect = item.getBoundingClientRect();
+                const itemWidth = item.offsetWidth || rect.width || 80;
+                const itemHeight = item.offsetHeight || rect.height || 80;
+                
+                const dragImage = item.cloneNode(true);
+                dragImage.style.position = 'absolute';
+                dragImage.style.top = '-9999px';
+                dragImage.style.left = '-9999px';
+                dragImage.style.width = itemWidth + 'px';
+                dragImage.style.height = itemHeight + 'px';
+                dragImage.style.opacity = '0.9';
+                dragImage.style.transform = 'scale(1.05) rotate(2deg)';
+                dragImage.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.4)';
+                dragImage.style.pointerEvents = 'none';
+                dragImage.style.zIndex = '9999';
+                document.body.appendChild(dragImage);
+                
+                // 强制重排，确保dragImage已渲染
+                void dragImage.offsetHeight;
+                
+                // 计算偏移量，让鼠标在图标中心
+                const offsetX = itemWidth / 2;
+                const offsetY = itemHeight / 2;
+                
+                // 设置拖拽图像（必须在dragstart中同步调用）
+                try {
+                    e.dataTransfer.setDragImage(dragImage, offsetX, offsetY);
+                } catch (err) {
+                    logger.warn('设置拖拽预览图像失败:', err);
+                }
+                
+                // 标记整个页面正在拖拽
+                document.body.setAttribute('data-dragging', 'true');
+                if (dom.navigationGrid) {
+                    dom.navigationGrid.setAttribute('data-dragging', 'true');
+                }
+                
+                // 延迟添加 dragging 样式，避免影响拖拽事件
+                // 使用setTimeout确保拖拽事件已经正常触发（使用timerManager统一管理，避免内存泄漏）
+                const dragItemId = item.dataset.itemId || 'default';
+                timerManager.clearTimeout(`navigation-drag-start-${dragItemId}`);
+                timerManager.setTimeout(`navigation-drag-start-${dragItemId}`, () => {
+                    item.classList.add('dragging');
+                    // 此时添加pointer-events: none不会影响已经开始的拖拽
+                    item.style.pointerEvents = 'none';
+                }, 0);
+                
+                // 延迟移除临时拖拽图像元素
+                requestAnimationFrame(() => {
+                    if (dragImage.parentNode) {
+                        try {
+                            document.body.removeChild(dragImage);
+                        } catch (err) {
+                            // 忽略移除错误
+                        }
+                    }
+                });
             }
         },
+        onDragOver: (() => {
+            // Infinity风格：实时移动DOM，让CSS Grid自动布局
+            let rafId = null;
+            let lastTargetKey = null;
+            
+            const processDragOver = (e) => {
+                if (!navigationModule.state.draggedItemId || !navigationModule.state.draggedItem) {
+                    e.preventDefault();
+                    return;
+                }
+                
+                e.preventDefault();
+                
+                const draggedItem = navigationModule.state.draggedItem;
+                draggedItem.style.pointerEvents = 'none';
+                
+                // 获取鼠标下的元素
+                const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
+                const targetItem = elementUnderMouse?.closest('.nav-item');
+                
+                if (!targetItem || targetItem === draggedItem) {
+                    lastTargetKey = null;
+                    draggedItem.style.pointerEvents = '';
+                    return;
+                }
+                
+                const targetItemId = targetItem.dataset.itemId;
+                const targetRect = targetItem.getBoundingClientRect();
+                const midpoint = targetRect.top + targetRect.height / 2;
+                const insertBefore = e.clientY < midpoint;
+                const targetKey = `${targetItemId}_${insertBefore}`;
+                
+                // 只有目标改变时才移动DOM，避免重复操作
+                if (targetKey !== lastTargetKey) {
+                    lastTargetKey = targetKey;
+                    
+                    // Infinity风格：直接移动DOM，让CSS Grid自动布局
+                    // Grid会自动让其他图标移动，不需要手动计算
+                    if (insertBefore) {
+                        // 插入到目标元素之前
+                        if (draggedItem.parentNode === targetItem.parentNode) {
+                            targetItem.parentNode.insertBefore(draggedItem, targetItem);
+                        }
+                    } else {
+                        // 插入到目标元素之后
+                        const nextSibling = targetItem.nextSibling;
+                        if (nextSibling && nextSibling !== draggedItem) {
+                            if (draggedItem.parentNode === targetItem.parentNode) {
+                                targetItem.parentNode.insertBefore(draggedItem, nextSibling);
+                            }
+                        } else {
+                            if (draggedItem.parentNode === targetItem.parentNode) {
+                                targetItem.parentNode.appendChild(draggedItem);
+                            }
+                        }
+                    }
+                }
+                
+                // 恢复pointerEvents
+                draggedItem.style.pointerEvents = '';
+            };
+            
+            return (e) => {
+                if (rafId) {
+                    cancelAnimationFrame(rafId);
+                }
+                rafId = requestAnimationFrame(() => {
+                    processDragOver(e);
+                    rafId = null;
+                });
+            };
+        })(),
         onDrop: (e) => {
             e.preventDefault();
-            const targetElem = e.target.closest('.nav-item');
+            
+            // 清理所有视觉指示器
+            const allItems = dom.navigationGrid.querySelectorAll('.nav-item');
+            allItems.forEach(item => {
+                item.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+            
             const draggedId = navigationModule.state.draggedItemId;
-            if (!draggedId) return;
+            const draggedItem = navigationModule.state.draggedItem;
+            
+            if (!draggedId || !draggedItem) {
+                // 清理状态
+                document.body.removeAttribute('data-dragging');
+                if (dom.navigationGrid) {
+                    dom.navigationGrid.removeAttribute('data-dragging');
+                }
+                return;
+            }
 
             const group = getGroupById(state.activeNavigationGroupId);
-            if (!group) return;
-
-            const itemIndex = group.items.findIndex(i => i.id === draggedId);
-            const [movedItem] = group.items.splice(itemIndex, 1);
-            
-            if (targetElem) {
-                const targetIndex = group.items.findIndex(i => i.id === targetElem.dataset.itemId);
-                group.items.splice(targetIndex, 0, movedItem);
-            } else {
-                group.items.push(movedItem);
+            if (!group) {
+                // 清理状态
+                document.body.removeAttribute('data-dragging');
+                if (dom.navigationGrid) {
+                    dom.navigationGrid.removeAttribute('data-dragging');
+                }
+                navigationModule.state.draggedItemId = null;
+                navigationModule.state.draggedItem = null;
+                return;
             }
             
-            updateNavigationGroupsMap(); // 更新缓存
-            core.saveUserData(() => navigationModule.render.grid());
-            navigationModule.state.draggedItemId = null;
+            // Infinity风格：拖拽过程中DOM已经实时移动到目标位置
+            // 释放时只需要清理状态，图标已经在正确位置
+            
+            // 移除拖拽样式，恢复可见性和pointer-events
+            draggedItem.classList.remove('dragging');
+            draggedItem.style.pointerEvents = '';
+            
+            // 移除拖拽标记，恢复动画
+            document.body.removeAttribute('data-dragging');
+            if (dom.navigationGrid) {
+                dom.navigationGrid.removeAttribute('data-dragging');
+            }
+            
+            // Infinity风格：等待CSS transition完成，然后更新数据
+            // 由于拖拽过程中DOM已经实时移动，释放后图标已经在目标位置（使用timerManager统一管理，避免内存泄漏）
+            timerManager.clearTimeout('navigation-drag-end-update');
+            timerManager.setTimeout('navigation-drag-end-update', () => {
+                const currentItems = Array.from(dom.navigationGrid.querySelectorAll('.nav-item'));
+                const currentItemIds = currentItems.map(item => item.dataset.itemId);
+                
+                const originalItems = [...group.items];
+                const reorderedItems = currentItemIds
+                    .map(id => originalItems.find(item => item.id === id))
+                    .filter(item => item !== undefined);
+                
+                if (reorderedItems.length === originalItems.length) {
+                    group.items = reorderedItems;
+                    updateNavigationGroupsMap();
+                    core.saveUserData(() => {
+                        // Infinity风格：平滑更新
+                        navigationModule.render.grid();
+                    });
+                } else {
+                    // 如果顺序有问题，重新渲染
+                    navigationModule.render.grid();
+                }
+                
+                navigationModule.state.draggedItemIds = [];
+                navigationModule.state.draggedItemId = null;
+                navigationModule.state.draggedItem = null;
+            }, 300);
         },
         onDragOverTab: (e) => {
             // 【修复】只处理导航项拖拽到标签的情况，忽略标签自身拖拽
-            if (navigationModule.state.draggedItemId) {
+            const { draggedItemId, draggedItemIds } = navigationModule.state;
+            if (draggedItemId || (draggedItemIds && draggedItemIds.length > 0)) {
                 e.preventDefault();
                 const tab = e.target.closest('.nav-tab');
                 if (tab && !tab.classList.contains('active')) {
@@ -988,24 +1334,65 @@ export const navigationModule = {
             const tab = e.target.closest('.nav-tab');
             if (!tab) return;
             tab.classList.remove('drag-over');
-            const draggedId = navigationModule.state.draggedItemId;
+            
+            const { draggedItemIds, draggedItemId, isBatchEditMode } = navigationModule.state;
             const targetGroupId = navigationModule.state.dragOverGroupId;
 
-            if (!draggedId || !targetGroupId || targetGroupId === state.activeNavigationGroupId) return;
+            // 使用批量拖拽的ID列表，如果没有则使用单个ID
+            const itemIdsToMove = draggedItemIds && draggedItemIds.length > 0 
+                ? draggedItemIds 
+                : (draggedItemId ? [draggedItemId] : []);
+
+            if (itemIdsToMove.length === 0 || !targetGroupId || targetGroupId === state.activeNavigationGroupId) {
+                // 清理状态
+                navigationModule.state.draggedItemIds = [];
+                navigationModule.state.draggedItemId = null;
+                navigationModule.state.dragOverGroupId = null;
+                return;
+            }
 
             const sourceGroup = getGroupById(state.activeNavigationGroupId);
             const targetGroup = getGroupById(targetGroupId);
-            if (!sourceGroup || !targetGroup) return;
+            if (!sourceGroup || !targetGroup) {
+                // 清理状态
+                navigationModule.state.draggedItemIds = [];
+                navigationModule.state.draggedItemId = null;
+                navigationModule.state.dragOverGroupId = null;
+                return;
+            }
 
-            const itemIndex = sourceGroup.items.findIndex(i => i.id === draggedId);
-            const [movedItem] = sourceGroup.items.splice(itemIndex, 1);
-            targetGroup.items.push(movedItem);
+            // 批量移动项目
+            const movedItems = [];
+            itemIdsToMove.forEach(itemId => {
+                const itemIndex = sourceGroup.items.findIndex(i => i.id === itemId);
+                if (itemIndex > -1) {
+                    const [movedItem] = sourceGroup.items.splice(itemIndex, 1);
+                    targetGroup.items.push(movedItem);
+                    movedItems.push(movedItem);
+                }
+            });
+
+            if (movedItems.length === 0) {
+                // 清理状态
+                navigationModule.state.draggedItemIds = [];
+                navigationModule.state.draggedItemId = null;
+                navigationModule.state.dragOverGroupId = null;
+                return;
+            }
 
             updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData(() => {
-                utils.showToast(`已移动到 "${targetGroup.name}"`, 'success');
+                const count = movedItems.length;
                 navigationModule.render.grid();
+                
+                // 批量编辑模式下，完成操作后自动退出
+                if (isBatchEditMode) {
+                    navigationModule.utils.toggleBatchEditMode();
+                }
             });
+            
+            // 清理状态
+            navigationModule.state.draggedItemIds = [];
             navigationModule.state.draggedItemId = null;
             navigationModule.state.dragOverGroupId = null;
         },
@@ -1023,7 +1410,7 @@ export const navigationModule = {
                 group.name = newName.trim();
                 updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData(() => {
-                    utils.showToast('重命名成功', 'success');
+('重命名成功', 'success');
                     navigationModule.render.tabs();
                 });
             }
@@ -1046,7 +1433,7 @@ export const navigationModule = {
                         state.activeNavigationGroupId = state.userData.navigationGroups[0]?.id || null;
                     }
                     core.saveUserData(() => {
-                        utils.showToast('删除成功', 'success');
+('删除成功', 'success');
                         navigationModule.render.all();
                         // 检查侧边面板的导航组管理手风琴是否展开
                         const navGroupAccordion = document.querySelector('[data-accordion="nav-group-management"]');
@@ -1090,10 +1477,10 @@ export const navigationModule = {
             updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData((error) => {
                 if (error) {
-                    utils.showToast('保存失败: ' + error.message, 'error');
+('保存失败: ' + error.message, 'error');
                     
                 } else {
-                    utils.showToast('分类已保存', 'success');
+('分类已保存', 'success');
                     navigationModule.render.all();
                     navigationModule.render.groupManagementModal();
                     navigationModule.handlers.onCancelGroupEdit();

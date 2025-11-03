@@ -152,13 +152,29 @@ import { utils } from './js/utils.js';
             }
             logger.debug('User data before save:', userData);
 
-            // 自动生成图标链接
+            // 使用统一的图标源方案自动生成图标链接
             let iconUrl = '';
             try {
-                const hostname = new URL(url).hostname;
-                iconUrl = `https://icon.bqb.cool/?url=${hostname}`;
+                // 使用统一的图标源获取方案
+                const { aiManager } = await import('./js/features/ai-manager.js');
+                const sources = aiManager.getIconSources(url);
+                if (sources && sources.length > 0) {
+                    // 使用第一个图标源（icon.bqb.cool，首选）
+                    iconUrl = sources[0].url;
+                } else {
+                    // 如果获取失败，使用直链favicon作为fallback
+                    const urlObj = new URL(url);
+                    iconUrl = `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
+                }
             } catch (e) {
-                
+                logger.warn('无法生成图标URL:', e);
+                // 如果URL解析失败，尝试使用utils的同步方法作为fallback
+                try {
+                    iconUrl = utils.getIconUrlFromUrl(url);
+                } catch (err) {
+                    // 最终fallback为空字符串
+                    iconUrl = '';
+                }
             }
 
             const newNavItem = {

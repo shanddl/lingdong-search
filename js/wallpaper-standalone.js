@@ -1,4 +1,52 @@
 // 壁纸库脚本
+// 【P0内存优化】动态导入LRU缓存工具（兼容非模块环境）
+let LRUCache;
+(async () => {
+    try {
+        const module = await import('./utils/lruCache.js');
+        LRUCache = module.LRUCache;
+    } catch (error) {
+        console.error('⚠️ 无法加载LRU缓存模块:', error);
+        // 降级：使用原生Map（但不具备LRU功能）
+        LRUCache = class {
+            constructor(maxSize, onEvict) {
+                this.maxSize = maxSize;
+                this.cache = new Map();
+                this.onEvict = onEvict;
+            }
+            get(key) { return this.cache.get(key); }
+            set(key, value) {
+                if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
+                    const firstKey = this.cache.keys().next().value;
+                    if (this.onEvict) {
+                        try { this.onEvict(firstKey, this.cache.get(firstKey)); } catch (e) {}
+                    }
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(key, value);
+            }
+            has(key) { return this.cache.has(key); }
+            delete(key) { return this.cache.delete(key); }
+            clear() { this.cache.clear(); }
+            get size() { return this.cache.size; }
+            keys() { return this.cache.keys(); }
+            evict(count) {
+                let deleted = 0;
+                const entries = Array.from(this.cache.entries());
+                for (let i = 0; i < Math.min(count, entries.length); i++) {
+                    const [key, value] = entries[i];
+                    if (this.onEvict) {
+                        try { this.onEvict(key, value); } catch (e) {}
+                    }
+                    this.cache.delete(key);
+                    deleted++;
+                }
+                return deleted;
+            }
+        };
+    }
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // ==================
@@ -16,23 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 本地存储键名
     const MY_UPLOADS_KEY = 'my_uploaded_wallpapers';
     
-    // Canvas缓存对象 - 避免重复渲染相同颜色
-    const canvasCache = new Map();
-    const MAX_CACHE_SIZE = 50; // 最多缓存50个颜色
-    
-    // 【新增】缩略图压缩缓存
-    const thumbnailCache = new Map();
-    const MAX_THUMBNAIL_CACHE = 200; // 最多缓存200个压缩缩略图
-    const THUMBNAIL_MAX_WIDTH = 400; // 缩略图最大宽度
-    const THUMBNAIL_MAX_HEIGHT = 250; // 缩略图最大高度
-    const THUMBNAIL_QUALITY = 0.75; // 缩略图质量（JPEG）
-    
-    // 【P0优化】Blob URL跟踪器 - 防止内存泄漏
-    const blobUrlTracker = new Set();
-    
-    // 【P0优化】安全释放Blob URL
+    // 【P0内存优化】Blob URL安全释放函数（需要在缓存定义前声明）
     function safeBlobRevoke(url) {
-        if (url && url.startsWith('blob:') && blobUrlTracker.has(url)) {
+        if (url && typeof url === 'string' && url.startsWith('blob:') && blobUrlTracker.has(url)) {
             try {
                 URL.revokeObjectURL(url);
                 blobUrlTracker.delete(url);
@@ -42,6 +76,58 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+    
+    // 【P0优化】Blob URL跟踪器 - 防止内存泄漏
+    const blobUrlTracker = new Set();
+    
+    // 【修复】等待LRUCache加载完成后再初始化缓存
+    // Canvas缓存对象 - 使用LRU缓存，最多缓存50个颜色
+    let canvasCache;
+    let thumbnailCache;
+    
+    // 初始化缓存的函数
+    function initCaches() {
+        if (!LRUCache) {
+            console.warn('⚠️ LRUCache未加载，使用原生Map降级');
+            canvasCache = new Map();
+            thumbnailCache = new Map();
+            return;
+        }
+        
+        canvasCache = new LRUCache(50);
+        
+        // 【P0内存优化】缩略图压缩缓存 - 使用LRU缓存，最多缓存200个
+        // onEvict回调：当缓存项被淘汰时，自动清理Blob URL
+        thumbnailCache = new LRUCache(
+            200,
+            (key, value) => {
+                // 如果被淘汰的值是Blob URL，自动释放
+                if (value && typeof value === 'string' && value.startsWith('blob:')) {
+                    safeBlobRevoke(value);
+                }
+            }
+        );
+    }
+    
+    // 延迟初始化（等待LRUCache加载）
+    if (LRUCache) {
+        initCaches();
+    } else {
+        // 如果LRUCache还在加载，等待一小段时间后重试
+        setTimeout(() => {
+            if (!canvasCache) {
+                initCaches();
+            }
+        }, 100);
+    }
+    
+    // 保留常量用于兼容旧代码
+    const MAX_CACHE_SIZE = 50;
+    const MAX_THUMBNAIL_CACHE = 200;
+    const THUMBNAIL_MAX_WIDTH = 400; // 缩略图最大宽度
+    const THUMBNAIL_MAX_HEIGHT = 250; // 缩略图最大高度
+    const THUMBNAIL_QUALITY = 0.75; // 缩略图质量（JPEG）
+    
     
     // 【P0优化】批量释放Blob URLs
     function batchRevokeBlobUrls() {
@@ -105,13 +191,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 获取缓存统计
         getCacheStats: function() {
+            // 【修复】确保缓存已初始化
+            if (!canvasCache || !thumbnailCache) {
+                initCaches();
+            }
             return {
-                canvasCache: canvasCache.size,
-                thumbnailCache: thumbnailCache.size,
+                canvasCache: canvasCache ? canvasCache.size : 0,
+                thumbnailCache: thumbnailCache ? thumbnailCache.size : 0,
                 fullImageCache: fullImageCache.size,
                 preloadCache: preloadCache.size,
                 blobUrlTracker: blobUrlTracker.size,
-                totalCacheItems: canvasCache.size + thumbnailCache.size + fullImageCache.size + preloadCache.size
+                totalCacheItems: (canvasCache ? canvasCache.size : 0) + (thumbnailCache ? thumbnailCache.size : 0) + fullImageCache.size + preloadCache.size
             };
         },
         
@@ -119,26 +209,22 @@ document.addEventListener('DOMContentLoaded', () => {
         cleanupCache: function(aggressive = false) {
             let cleaned = 0;
             
-            // 清理Canvas缓存（保留最近50%）
-            if (canvasCache.size > MAX_CACHE_SIZE * 0.5 || aggressive) {
-                const toDelete = Math.floor(canvasCache.size * (aggressive ? 0.8 : 0.5));
-                const keys = Array.from(canvasCache.keys()).slice(0, toDelete);
-                keys.forEach(key => {
-                    canvasCache.delete(key);
-                    cleaned++;
-                });
+            // 【修复】确保缓存已初始化后再清理
+            if (!canvasCache || !thumbnailCache) {
+                initCaches();
             }
             
-            // 清理缩略图缓存
-            if (thumbnailCache.size > MAX_THUMBNAIL_CACHE * 0.5 || aggressive) {
-                const toDelete = Math.floor(thumbnailCache.size * (aggressive ? 0.8 : 0.5));
-                const keys = Array.from(thumbnailCache.keys()).slice(0, toDelete);
-                keys.forEach(key => {
-                    const url = thumbnailCache.get(key);
-                    safeBlobRevoke(url);
-                    thumbnailCache.delete(key);
-                    cleaned++;
-                });
+            // 【修复】逻辑运算符优先级修复：使用括号确保正确判断
+            // 【P0内存优化】LRU缓存清理：使用evict方法批量清理
+            if (canvasCache && (canvasCache.size > MAX_CACHE_SIZE * 0.5 || aggressive)) {
+                const toEvict = Math.floor(canvasCache.size * (aggressive ? 0.8 : 0.5));
+                cleaned += canvasCache.evict ? canvasCache.evict(toEvict) : 0;
+            }
+            
+            // 清理缩略图缓存（LRU会自动调用onEvict清理Blob URL）
+            if (thumbnailCache && (thumbnailCache.size > MAX_THUMBNAIL_CACHE * 0.5 || aggressive)) {
+                const toEvict = Math.floor(thumbnailCache.size * (aggressive ? 0.8 : 0.5));
+                cleaned += thumbnailCache.evict ? thumbnailCache.evict(toEvict) : 0;
             }
             
             // 清理原图缓存
@@ -168,17 +254,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (memInfo) {
                     console.log(`📊 内存监控: ${memInfo.used}MB / ${memInfo.limit}MB (${memInfo.percentage}%)`);
                     
-                    // 内存使用超过80%时自动清理
-                    if (memInfo.percentage > 80) {
-                        console.warn('⚠️ 内存使用率过高，执行缓存清理...');
+                    // 【P0内存优化】降低阈值，更早触发清理（60-70%警告，80%以上激进清理）
+                    if (memInfo.percentage > 70) {
+                        console.warn('⚠️ 内存使用率较高，执行缓存清理...');
                         this.cleanupCache(false);
                     }
                     
-                    // 内存使用超过90%时激进清理
-                    if (memInfo.percentage > 90) {
-                        console.error('🔴 内存严重不足，执行激进清理...');
+                    // 内存使用超过80%时激进清理
+                    if (memInfo.percentage > 80) {
+                        console.error('🔴 内存使用率过高，执行激进清理...');
                         this.cleanupCache(true);
                         batchRevokeBlobUrls();
+                    }
+                    
+                    // 内存使用超过90%时紧急清理
+                    if (memInfo.percentage > 90) {
+                        console.error('🚨 内存严重不足，执行紧急清理...');
+                        this.cleanupCache(true);
+                        batchRevokeBlobUrls();
+                        // 清理所有缓存（确保已初始化）
+                        if (!canvasCache || !thumbnailCache) {
+                            initCaches();
+                        }
+                        if (canvasCache) canvasCache.clear();
+                        if (thumbnailCache) thumbnailCache.clear();
+                        fullImageCache.clear();
+                        preloadCache.clear();
                     }
                 }
                 
@@ -774,8 +875,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Canvas缓存辅助函数 - 生成颜色图片（带缓存）
     function generateColorImage(color) {
+        // 【修复】确保缓存已初始化
+        if (!canvasCache) {
+            initCaches();
+        }
+        
         // 检查缓存
-        if (canvasCache.has(color)) {
+        if (canvasCache && canvasCache.has(color)) {
             console.log('📦 使用缓存的颜色图片:', color);
             return canvasCache.get(color);
         }
@@ -803,16 +909,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const imageUrl = canvas.toDataURL('image/png');
         
-        // 缓存管理 - 限制缓存大小
-        if (canvasCache.size >= MAX_CACHE_SIZE) {
-            // 删除最早的缓存项
-            const firstKey = canvasCache.keys().next().value;
-            canvasCache.delete(firstKey);
-            console.log('🗑️ 缓存已满，删除最早的项:', firstKey);
+        // 【修复】确保缓存已初始化后再设置
+        if (!canvasCache) {
+            initCaches();
         }
-        
-        // 添加到缓存
-        canvasCache.set(color, imageUrl);
+        // 【P0内存优化】LRU缓存自动管理，无需手动检查大小
+        if (canvasCache) {
+            canvasCache.set(color, imageUrl);
+        }
         
         return imageUrl;
     }
@@ -1024,8 +1128,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 【修复】动态压缩缩略图（智能判断 + Blob URL）
     async function compressThumbnail(imageUrl) {
+        // 【修复】确保缓存已初始化
+        if (!thumbnailCache) {
+            initCaches();
+        }
+        
         // 检查缓存
-        if (thumbnailCache.has(imageUrl)) {
+        if (thumbnailCache && thumbnailCache.has(imageUrl)) {
             console.log('📦 使用缓存的压缩缩略图');
             return thumbnailCache.get(imageUrl);
         }
@@ -1043,7 +1152,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 【优化】智能判断：如果图片已经很小，直接使用原URL
                     if (originalWidth <= THUMBNAIL_MAX_WIDTH && originalHeight <= THUMBNAIL_MAX_HEIGHT) {
                         console.log(`✅ 图片尺寸已适中(${originalWidth}x${originalHeight})，跳过压缩`);
-                        thumbnailCache.set(imageUrl, imageUrl);
+                        if (thumbnailCache) {
+                            thumbnailCache.set(imageUrl, imageUrl);
+                        }
                         resolve(imageUrl);
                         return;
                     }
@@ -1082,15 +1193,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             console.log(`🎨 缩略图压缩: ${originalWidth}x${originalHeight} → ${width}x${height}, 体积: ${(compressedSize/1024).toFixed(1)}KB`);
                             
-                            // 缓存压缩后的图片
-                            if (thumbnailCache.size >= MAX_THUMBNAIL_CACHE) {
-                                const firstKey = thumbnailCache.keys().next().value;
-                                const oldBlobUrl = thumbnailCache.get(firstKey);
-                                // 【P0优化】使用安全释放函数
-                                safeBlobRevoke(oldBlobUrl);
-                                thumbnailCache.delete(firstKey);
+                            // 【修复】确保缓存已初始化
+                            if (!thumbnailCache) {
+                                initCaches();
                             }
-                            thumbnailCache.set(imageUrl, blobUrl);
+                            // 【P0内存优化】LRU缓存自动管理，onEvict回调会自动清理Blob URL
+                            if (thumbnailCache) {
+                                thumbnailCache.set(imageUrl, blobUrl);
+                            }
                             
                             resolve(blobUrl);
                         }, 'image/jpeg', THUMBNAIL_QUALITY);
@@ -1104,7 +1214,9 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onerror = () => {
                 // 【修复】CORS或加载失败时，直接使用原URL（不要警告用户）
                 console.log('📌 图片加载失败或CORS限制，使用原URL');
-                thumbnailCache.set(imageUrl, imageUrl); // 缓存原URL，避免重复尝试
+                if (thumbnailCache) {
+                    thumbnailCache.set(imageUrl, imageUrl); // 缓存原URL，避免重复尝试
+                }
                 resolve(imageUrl);
             };
             
@@ -1448,7 +1560,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('获取到壁纸数量:', images.length);
             renderWallpapers(images, isMyUploads, append);
             
-            // 【已移除】加载更多按钮显示控制（使用无限滚动代替）
         } catch (error) {
             console.error(`加载 ${activeSource} 壁纸失败:`, error);
             if (!append) {

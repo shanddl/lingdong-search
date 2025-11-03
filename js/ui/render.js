@@ -76,9 +76,15 @@ export const render = {
                 leftDiv.className = 'bookmark-left';
                 leftDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;';
                 
-                // 创建图标
-                if (item.favicon) {
-                    const safeIconUrl = sanitizer.sanitizeIconUrl(item.favicon);
+                // 创建图标 - 使用统一的图标源方案
+                let iconUrl = item.favicon;
+                // 如果没有favicon但有URL，使用统一的图标源方案从URL获取
+                if (!iconUrl && item.url) {
+                    iconUrl = utils.getIconUrlFromUrl(item.url);
+                }
+                
+                if (iconUrl) {
+                    const safeIconUrl = sanitizer.sanitizeIconUrl(iconUrl);
                     const img = utils.dom.createIcon(STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, safeIconUrl, '', { sanitize: false });
                     leftDiv.appendChild(img);
                 } else {
@@ -107,13 +113,45 @@ export const render = {
                 // 不在容器上设置 data-action，避免整个容器都可点击
                 if(index === state.activeSuggestionIndex) div.classList.add('active');
                 
+                // 左侧容器：图标 + 文本
+                const leftDiv = document.createElement('div');
+                leftDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;';
+                
+                // 尝试从item中提取URL并获取图标（适用于历史记录）
+                let iconUrl = null;
+                if (item && typeof item === 'string') {
+                    // 检查是否是URL格式
+                    try {
+                        const testUrl = new URL(item);
+                        // 如果是有效URL，获取图标
+                        iconUrl = utils.getIconUrlFromUrl(item);
+                    } catch (e) {
+                        // 不是URL，可能是搜索关键词，不显示图标
+                        iconUrl = null;
+                    }
+                }
+                
+                // 创建图标（如果有）
+                if (iconUrl) {
+                    const safeIconUrl = sanitizer.sanitizeIconUrl(iconUrl);
+                    const img = utils.dom.createIcon(STATIC_CONFIG.STYLES.ICON_SIZES.SMALL, safeIconUrl, '', { sanitize: false });
+                    leftDiv.appendChild(img);
+                } else {
+                    // 没有图标时，根据类型显示不同的占位符
+                    const placeholder = type === 'history' ? '🕒' : '🔍';
+                    const iconSpan = utils.dom.createStyledElement('span', STATIC_CONFIG.STYLES.ICON_STYLES.SMALL_ICON, {}, placeholder);
+                    leftDiv.appendChild(iconSpan);
+                }
+                
                 // 使用文本容器包裹，确保样式正确应用
                 const textSpan = document.createElement('span');
                 textSpan.className = 'suggestion-text';
                 textSpan.textContent = item;
                 // 将 data-action 设置在文本元素上，只有点击文本才触发搜索
                 textSpan.dataset.action = 'select-suggestion';
-                div.appendChild(textSpan);
+                leftDiv.appendChild(textSpan);
+                
+                div.appendChild(leftDiv);
 
                 if (type === 'history') {
                     const button = document.createElement('button');
@@ -557,11 +595,8 @@ export const render = {
         container.appendChild(fileFilterContainer);
     },
     scopeManagementModal: () => {
-        console.log('[Render] scopeManagementModal called');
         const manageScopesTabs = document.getElementById('manage-scopes-tabs');
         const manageScopesList = document.getElementById('manage-scopes-list');
-        console.log('[Render] manageScopesTabs:', manageScopesTabs);
-        console.log('[Render] manageScopesList:', manageScopesList);
         if (!manageScopesTabs || !manageScopesList) {
             console.error('[Render] Scopes elements not found');
             return;
@@ -665,6 +700,18 @@ export const render = {
             listFragment.appendChild(listItem);
         });
         
+        // 【P0内存优化】清理旧的图片资源（Blob URL）后再清空innerHTML
+        const oldImages = dom.manageScopesList.querySelectorAll('img');
+        oldImages.forEach(img => {
+            if (img.src && img.src.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(img.src);
+                } catch (e) {
+                    // ignore
+                }
+            }
+        });
+        
         dom.manageScopesList.innerHTML = '';
         dom.manageScopesList.appendChild(listFragment);
         
@@ -678,9 +725,7 @@ export const render = {
         utils.events.bindDragEvents(dom.manageScopesList, '.list-item', scopeDragHandlers, renderEventIds.scopeManagement);
     },
     engineManagementModal: () => {
-        console.log('[Render] engineManagementModal called');
         const engineList = document.getElementById('engine-list');
-        console.log('[Render] engineList element:', engineList);
         if (!engineList) {
             console.error('[Render] Engine list element not found');
             logger.error('Engine list element not found');
@@ -783,6 +828,18 @@ export const render = {
             listItem.appendChild(actions);
             
             fragment.appendChild(listItem);
+        });
+        
+        // 【P0内存优化】清理旧的图片资源（Blob URL）后再清空innerHTML
+        const oldImages = dom.engineList.querySelectorAll('img');
+        oldImages.forEach(img => {
+            if (img.src && img.src.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(img.src);
+                } catch (e) {
+                    // ignore
+                }
+            }
         });
         
         dom.engineList.innerHTML = '';

@@ -121,8 +121,16 @@ export const bookmarkSearch = {
                     if (!path || path === '/' || path === '') {
                         path = domain;
                     }
-                    // 生成favicon URL
-                    favicon = `${url.protocol}//${url.hostname}/favicon.ico`;
+                    // 使用统一的图标源方案获取favicon
+                    const { aiManager } = await import('./ai-manager.js');
+                    const sources = aiManager.getIconSources(bookmark.url);
+                    if (sources && sources.length > 0) {
+                        // 使用第一个图标源（icon.bqb.cool，首选）
+                        favicon = sources[0].url;
+                    } else {
+                        // 如果获取失败，使用直链favicon作为fallback
+                        favicon = `${url.protocol}//${url.hostname}/favicon.ico`;
+                    }
                 } catch (e) {
                     // 如果URL解析失败，使用默认值
                     domain = bookmark.url;

@@ -72,7 +72,6 @@ export function initSlider(config, globalEventIds, throttleFunc) {
             // 保存并显示提示
             core.saveUserData(() => {
                 if (successMessage) {
-                    utils.showToast(successMessage, 'success');
                 }
             });
         })
@@ -155,7 +154,6 @@ export function initNestedSlider(config, globalEventIds, throttleFunc) {
             
             core.saveUserData(() => {
                 if (successMessage) {
-                    utils.showToast(successMessage, 'success');
                 }
             });
         })

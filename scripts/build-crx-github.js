@@ -204,11 +204,23 @@ async function buildExtension() {
   
   // 生成私钥（如果不存在）
   if (!fs.existsSync(privateKeyPath)) {
-    console.log('🔑 生成私钥文件...');
-    execSync(`openssl genrsa -out "${privateKeyPath}" 2048`, {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..')
-    });
+    console.log('🔑 私钥文件不存在，生成新私钥...');
+    console.log('⚠️  警告：每次生成新私钥会导致CRX签名不一致，建议使用固定的私钥');
+    
+    // 尝试使用 openssl 生成私钥
+    try {
+      execSync(`openssl genrsa -out "${privateKeyPath}" 2048`, {
+        stdio: 'inherit',
+        cwd: path.join(__dirname, '..')
+      });
+      console.log('✅ 私钥文件生成成功');
+    } catch (error) {
+      console.error('❌ 无法使用 openssl 生成私钥:', error.message);
+      console.error('💡 提示：请在 GitHub Secrets 中添加 CRX_PRIVATE_KEY 以确保签名一致性');
+      throw new Error('私钥生成失败，无法构建 CRX 文件');
+    }
+  } else {
+    console.log('✅ 使用现有私钥文件');
   }
   
   const files = [];

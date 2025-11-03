@@ -5,11 +5,17 @@
 import { authManager } from './authManager.js';
 import { syncManager } from './syncManager.js';
 import { logger } from '../logger.js';
+import { NotificationService } from '../utils/notificationService.js';
+import { timerManager } from '../utils/timerManager.js';
+import { eventManager } from '../eventManager.js';
+import { state } from '../state.js';
 
 const log = logger.module('SyncUI');
 
 export const syncUI = {
-    statusIntervalId: null,
+    // statusIntervalId已不再使用，改用timerManager统一管理
+    // 存储事件监听器ID，用于清理
+    eventIds: [],
     /**
      * 创建登录/注册模态框
      */
@@ -169,15 +175,23 @@ export const syncUI = {
     },
 
     /**
-     * 绑定模态框事件
+     * 绑定模态框事件（已优化：使用eventManager统一管理，避免内存泄漏）
      */
     bindAuthModalEvents(modal) {
+        // 清理旧的事件监听器（如果模态框被重复创建）
+        if (modal._syncEventIds) {
+            modal._syncEventIds.forEach(id => eventManager.remove(id));
+            modal._syncEventIds = [];
+        } else {
+            modal._syncEventIds = [];
+        }
+        
         // 标签切换
         const tabs = modal.querySelectorAll('.sync-tab');
         const submitText = modal.querySelector('#sync-submit-text');
         
         tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
+            const eventId = eventManager.add(tab, 'click', () => {
                 tabs.forEach(t => {
                     t.classList.remove('active');
                     t.style.background = 'var(--bg-secondary, #2d2d2d)';
@@ -190,27 +204,41 @@ export const syncUI = {
                 const isLogin = tab.dataset.tab === 'login';
                 submitText.textContent = isLogin ? '登录' : '注册';
             });
+            modal._syncEventIds.push(eventId);
         });
 
         // 表单提交
         const form = modal.querySelector('#sync-auth-form');
-        form.addEventListener('submit', async (e) => {
+        const formSubmitId = eventManager.add(form, 'submit', async (e) => {
             e.preventDefault();
             await this.handleAuthSubmit(modal);
         });
+        modal._syncEventIds.push(formSubmitId);
 
         // 取消按钮
         const cancelBtn = modal.querySelector('#sync-cancel-btn');
-        cancelBtn.addEventListener('click', () => {
+        const cancelBtnId = eventManager.add(cancelBtn, 'click', () => {
+            // 清理事件监听器
+            if (modal._syncEventIds) {
+                modal._syncEventIds.forEach(id => eventManager.remove(id));
+                modal._syncEventIds = [];
+            }
             modal.remove();
         });
+        modal._syncEventIds.push(cancelBtnId);
 
         // 点击背景关闭
-        modal.addEventListener('click', (e) => {
+        const modalClickId = eventManager.add(modal, 'click', (e) => {
             if (e.target === modal) {
+                // 清理事件监听器
+                if (modal._syncEventIds) {
+                    modal._syncEventIds.forEach(id => eventManager.remove(id));
+                    modal._syncEventIds = [];
+                }
                 modal.remove();
             }
         });
+        modal._syncEventIds.push(modalClickId);
     },
 
     /**
@@ -238,7 +266,7 @@ export const syncUI = {
                 modal.remove();
                 await syncManager.init();
                 await syncManager.fullSync();
-                this.showToast('✓ ' + (isLogin ? '登录成功' : '注册成功'), 'success');
+('✓ ' + (isLogin ? '登录成功' : '注册成功'), 'success');
                 this.updateSyncStatus();
             } else {
                 // 显示错误
@@ -297,18 +325,22 @@ export const syncUI = {
             <span id="sync-status-text">未登录</span>
         `;
 
-        // 点击显示菜单
-        indicator.addEventListener('click', () => {
+        // 点击显示菜单（使用eventManager统一管理）
+        const clickId = eventManager.add(indicator, 'click', () => {
             this.showSyncMenu();
         });
+        this.eventIds.push(clickId);
 
-        // 悬停效果
-        indicator.addEventListener('mouseenter', () => {
+        // 悬停效果（使用eventManager统一管理）
+        const mouseenterId = eventManager.add(indicator, 'mouseenter', () => {
             indicator.style.transform = 'scale(1.05)';
         });
-        indicator.addEventListener('mouseleave', () => {
+        this.eventIds.push(mouseenterId);
+        
+        const mouseleaveId = eventManager.add(indicator, 'mouseleave', () => {
             indicator.style.transform = 'scale(1)';
         });
+        this.eventIds.push(mouseleaveId);
 
         return indicator;
     },
@@ -390,7 +422,7 @@ export const syncUI = {
      * 测试 Supabase 连接
      */
     async testSupabaseConnection() {
-        this.showToast('正在测试连接...', 'info');
+('正在测试连接...', 'info');
         
         try {
             // 从 apiClient 获取配置
@@ -413,10 +445,10 @@ export const syncUI = {
             
             if (restResponse.ok && authResponse.ok) {
                 message += '🎉 Supabase 连接正常！\n可以正常使用同步功能。';
-                this.showToast('✅ 连接测试成功', 'success');
+('✅ 连接测试成功', 'success');
             } else {
                 message += '⚠️ 连接存在问题。\n\n可能原因：\n1. 代理未生效\n2. 项目已暂停\n3. 网络限制';
-                this.showToast('❌ 连接测试失败', 'error');
+('❌ 连接测试失败', 'error');
             }
             
             alert(message);
@@ -428,7 +460,7 @@ export const syncUI = {
         } catch (error) {
             const message = `❌ 连接测试失败\n\n错误：${error.message}\n\n请检查：\n1. 代理是否正常工作\n2. Supabase 项目是否可访问\n3. 浏览器控制台的详细错误`;
             alert(message);
-            this.showToast('❌ 连接失败: ' + error.message, 'error');
+('❌ 连接失败: ' + error.message, 'error');
             console.error('[连接测试] 错误:', error);
         }
     },
@@ -437,13 +469,13 @@ export const syncUI = {
      * 手动同步
      */
     async manualSync() {
-        this.showToast('开始同步...', 'info');
+('开始同步...', 'info');
         const result = await syncManager.pushToCloud(state.userData);
         
         if (result.success) {
-            this.showToast('✓ 同步成功', 'success');
+('✓ 同步成功', 'success');
         } else {
-            this.showToast('✗ 同步失败: ' + result.error, 'error');
+('✗ 同步失败: ' + result.error, 'error');
         }
         
         this.updateSyncStatus();
@@ -457,7 +489,7 @@ export const syncUI = {
             await authManager.logout();
             syncManager.stopAutoSync();
             this.stopStatusInterval();
-            this.showToast('已登出', 'info');
+('已登出', 'info');
             this.updateSyncStatus();
         }
     },
@@ -470,45 +502,18 @@ export const syncUI = {
             const result = await syncManager.deleteCloudData();
             
             if (result.success) {
-                this.showToast('✓ 云端数据已删除', 'success');
+('✓ 云端数据已删除', 'success');
             } else {
-                this.showToast('✗ 删除失败: ' + result.error, 'error');
+('✗ 删除失败: ' + result.error, 'error');
             }
         }
     },
 
     /**
-     * 显示 Toast 提示
+     * 显示 Toast 提示（使用NotificationService统一管理）
      */
     showToast(message, type = 'info') {
-        const colors = {
-            success: '#4caf50',
-            error: '#ff4444',
-            info: '#4a9eff'
-        };
-
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            padding: 12px 20px;
-            background: ${colors[type] || colors.info};
-            color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10001;
-            font-size: 14px;
-            animation: slideIn 0.3s ease;
-        `;
-        toast.textContent = message;
-
-        document.body.appendChild(toast);
-
-        setTimeout(() => {
-            toast.style.animation = 'slideOut 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
+        // 提示框功能已禁用
     },
 
     /**
@@ -527,32 +532,63 @@ export const syncUI = {
 
         log.info('同步UI已初始化');
 
-        // 页面可见性变更：隐藏时暂停轮询，可见时恢复
-        document.addEventListener('visibilitychange', () => {
+        // 页面可见性变更：隐藏时暂停轮询，可见时恢复（使用eventManager统一管理）
+        const visibilityId = eventManager.add(document, 'visibilitychange', () => {
             if (document.hidden) {
                 this.stopStatusInterval();
             } else {
                 this.startStatusInterval();
             }
         });
+        this.eventIds.push(visibilityId);
+    },
+    
+    /**
+     * 销毁同步UI（清理所有资源，避免内存泄漏）
+     */
+    destroy() {
+        // 清理所有事件监听器
+        this.eventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this.eventIds = [];
+        
+        // 停止状态轮询
+        this.stopStatusInterval();
+        
+        // 移除指示器
+        const indicator = document.getElementById('sync-status-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+        
+        // 移除模态框（如果存在）
+        const modal = document.getElementById('sync-auth-modal');
+        if (modal) {
+            // 清理模态框的事件监听器
+            if (modal._syncEventIds) {
+                modal._syncEventIds.forEach(id => eventManager.remove(id));
+                modal._syncEventIds = [];
+            }
+            modal.remove();
+        }
+        
+        log.info('同步UI已销毁');
     }
 };
 
-// 辅助方法：管理状态轮询定时器
+// 辅助方法：管理状态轮询定时器（已优化：使用timerManager统一管理，避免内存泄漏）
 syncUI.startStatusInterval = function() {
-    if (this.statusIntervalId) {
-        clearInterval(this.statusIntervalId);
-    }
-    this.statusIntervalId = setInterval(() => {
+    // 【内存优化】使用timerManager统一管理定时器，避免内存泄漏
+    timerManager.clearInterval('syncUI-status-interval');
+    timerManager.setInterval('syncUI-status-interval', () => {
         this.updateSyncStatus();
     }, 1000);
 };
 
 syncUI.stopStatusInterval = function() {
-    if (this.statusIntervalId) {
-        clearInterval(this.statusIntervalId);
-        this.statusIntervalId = null;
-    }
+    // 【内存优化】使用timerManager统一清理定时器
+    timerManager.clearInterval('syncUI-status-interval');
 };
 
 // 暴露轮询控制到全局，便于性能监视器控制
