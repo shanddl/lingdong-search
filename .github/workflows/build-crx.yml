@@ -194,6 +194,22 @@ jobs:
             - ZIP: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.zip`
             - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
             
+            ### ✨ 新增功能
+            - 新增批量编辑功能，提升图标管理效率
+            
+            ### 🐛 问题修复
+            - （本版本无问题修复）
+            
+            ### ⚡ 性能优化
+            - 优化了内存占用，减少资源消耗
+            - 优化了图标排序的流畅性，提升用户体验
+            
+            ### 🎨 界面改进
+            - （本版本无界面改进）
+            
+            ### 📝 其他变更
+            - （本版本无其他变更）
+            
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
             
