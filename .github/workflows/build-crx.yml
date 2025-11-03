@@ -35,6 +35,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup private key from secrets
+        run: |
+          if [ -n "${{ secrets.CRX_PRIVATE_KEY }}" ]; then
+            echo "🔑 从 GitHub Secrets 恢复私钥..."
+            echo "${{ secrets.CRX_PRIVATE_KEY }}" > private-key.pem
+            chmod 600 private-key.pem
+            echo "✅ 私钥已恢复"
+          else
+            echo "⚠️ 未找到 CRX_PRIVATE_KEY Secret，将在构建时自动生成私钥"
+            echo "💡 建议：将私钥添加到 GitHub Secrets 以确保所有版本使用相同的签名"
+          fi
+
       - name: Read version from manifest
         id: manifest
         run: |
