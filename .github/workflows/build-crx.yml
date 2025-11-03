@@ -183,8 +183,8 @@ jobs:
             ## 🚀 Release v${{ steps.manifest.outputs.version }}
             
             ### 📦 下载
-            - [📦 下载 ZIP 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.zip)
-            - [📦 下载 CRX 文件](./lingdong-search-v${{ steps.manifest.outputs.version }}.crx)
+            - [📦 下载 ZIP 文件](https://github.com/${{ github.repository }}/releases/download/v${{ steps.manifest.outputs.version }}/lingdong-search-v${{ steps.manifest.outputs.version }}.zip)
+            - [📦 下载 CRX 文件](https://github.com/${{ github.repository }}/releases/download/v${{ steps.manifest.outputs.version }}/lingdong-search-v${{ steps.manifest.outputs.version }}.crx)
             
             **文件名格式：**
             - 带版本号：`lingdong-search-v${{ steps.manifest.outputs.version }}.zip/crx`
