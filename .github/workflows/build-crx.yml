@@ -206,6 +206,9 @@ jobs:
             - ZIP: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.zip`
             - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
             
+            ### ✨ 新增功能
+            - 新增 扩展管理
+            
             ### 🐛 问题修复
             - 修复错误
             
