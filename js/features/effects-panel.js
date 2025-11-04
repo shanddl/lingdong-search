@@ -234,9 +234,9 @@ class EffectsPanel {
         if (this.handleOverlayClick && !this._overlayClickEventId) {
             this._overlayClickEventId = eventManager.add(this.overlay, 'click', this.handleOverlayClick);
         }
-        // 注意：bindAccordion、bindTabs、bindSliders、bindButtons 使用的是直接绑定
-        // 它们的监听器绑定在DOM元素上，如果元素不被移除，监听器不会被累积
-        // 因此这里不需要恢复（因为它们从未被移除）
+        // 注意：bindAccordion、bindTabs、bindSliders、bindButtons 的事件监听器
+        // 在 closePanel() 中会被移除（内存优化策略），并在 openPanel() 中通过调用各自的 bind 方法重新绑定
+        // 因此这里不需要恢复（它们会在 openPanel() 中统一重新绑定）
         // 拖拽相关的监听器由cleanupResize管理，这里不需要处理
     }
     
@@ -277,6 +277,13 @@ class EffectsPanel {
         
         // 恢复事件监听器（如果之前被移除）
         this.restoreEventListeners();
+        
+        // 【修复】强制重新绑定所有事件监听器（因为可能在关闭时被移除了）
+        // 由于 closePanel() 中会移除所有事件监听器并重置标志，这里需要重新绑定
+        this.bindTabs();
+        this.bindAccordion();
+        this.bindSliders();
+        this.bindButtons();
         
         // 移除HTML中的内联display:none并添加ready类
         this.panel.style.display = '';
@@ -405,9 +412,16 @@ class EffectsPanel {
             // 重置状态
             this._currentActiveTab = null;
             
+            // 【修复】重置所有绑定标志，允许下次打开时重新绑定事件
+            // 因为事件监听器已经在上面被移除了，如果不重置标志，下次打开时不会重新绑定
+            this._bindedTabs = false;
+            this._bindedAccordion = false;
+            this._bindedSliders = false;
+            this._bindedButtons = false;
+            
             // 注意：bindAccordion、bindSliders、bindButtons 使用的是直接绑定
             // 它们的监听器绑定在DOM元素上，只要元素不被移除，就不会累积
-            // 因此这里不需要移除（这些元素不会被移除）
+            // 但由于内存优化策略，我们在关闭时会移除这些监听器，所以需要重置标志以便重新绑定
         } catch (e) {
             console.warn('[Effects Panel] Error removing event listeners:', e);
         }
@@ -1153,6 +1167,15 @@ class EffectsPanel {
                     // 即使失败也标记为已渲染，避免重复尝试
                     this._renderedAccordions.add(accordionType);
                 }
+                break;
+            case 'wallpaper':
+            case 'quick-actions':
+            case 'search':
+            case 'icons':
+            case 'data-management':
+                // 静态内容，不需要动态渲染，直接标记为已渲染
+                this._renderedAccordions.add(accordionType);
+                this._pendingRenders.delete(accordionType);
                 break;
             default:
                 // 未知的 accordion 类型，不进行渲染

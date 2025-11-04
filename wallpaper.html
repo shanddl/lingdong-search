@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>壁纸库</title>
+    
+    <!-- DNS预解析 -->
+    <link rel="dns-prefetch" href="https://cn.bing.com">
+    <link rel="dns-prefetch" href="http://wallpaper.apc.360.cn">
+    
+    <style>
+        :root {
+            --bg-color: #1f272f;
+            --card-bg-color: #2a343f;
+            --text-color: #e0e0e0;
+            --text-secondary-color: #a0a0a0;
+            --border-color: #3c4043;
+            --active-blue: #8ab4f8;
+            --active-blue-bg: rgba(138, 180, 248, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 0 20px 20px;
+        }
+
+        .header-sticky-wrapper {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: rgba(31, 39, 47, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 15px 20px 0;
+            margin: 0 -20px 20px;
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .main-nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .top-nav {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+            flex-wrap: wrap;
+        }
+
+        .home-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            background-color: var(--card-bg-color);
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .home-btn:hover {
+            background-color: #4a545f;
+            transform: translateY(-1px);
+        }
+
+        .home-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+
+        .nav-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 20px;
+            background-color: var(--card-bg-color);
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn:hover {
+            background-color: #4a545f;
+        }
+
+        .nav-btn.active {
+            background-color: var(--active-blue);
+            color: #121212;
+            font-weight: 500;
+        }
+
+        .sub-nav {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .subnav-btn {
+            padding: 6px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            background-color: transparent;
+            color: var(--text-secondary-color);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .subnav-btn:hover {
+            background-color: var(--card-bg-color);
+            color: var(--text-color);
+        }
+
+        .subnav-btn.active {
+            background-color: var(--active-blue-bg);
+            border-color: var(--active-blue);
+            color: var(--active-blue);
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            margin-left: auto;
+            background-color: var(--card-bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 6px 12px;
+            min-width: 200px;
+            transition: all 0.2s ease;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--active-blue);
+            box-shadow: 0 0 0 2px rgba(139, 196, 255, 0.2);
+        }
+
+        .search-input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            font-size: 14px;
+            outline: none;
+            padding: 0;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary-color);
+        }
+
+        .search-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary-color);
+            cursor: pointer;
+            padding: 4px;
+            margin-left: 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .search-btn:hover {
+            color: var(--active-blue);
+            background-color: rgba(139, 196, 255, 0.1);
+        }
+
+        .search-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* 纯色壁纸样式 - 颜色选择器 */
+
+        .color-picker-section {
+            padding: 15px 20px;
+            background-color: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        .color-picker-title {
+            font-size: 13px;
+            color: var(--text-secondary-color);
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .color-dots-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .color-dots-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .color-dot {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2.5px solid rgba(0, 0, 0, 0.2);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            flex-shrink: 0;
+            box-shadow: 
+                0 3px 6px rgba(0, 0, 0, 0.2),
+                0 1px 2px rgba(0, 0, 0, 0.1),
+                inset 0 -2px 4px rgba(0, 0, 0, 0.15),
+                inset 0 2px 4px rgba(255, 255, 255, 0.25);
+        }
+
+        /* 玻璃光泽效果 */
+        .color-dot::before {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            right: 3px;
+            height: 50%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0.4) 0%,
+                rgba(255, 255, 255, 0.15) 50%,
+                transparent 100%
+            );
+            border-radius: 50% 50% 40% 40%;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        /* 底部阴影高光 */
+        .color-dot::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 20%;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(255, 255, 255, 0.15) 0%,
+                transparent 70%
+            );
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .color-dot:hover {
+            transform: scale(1.25) translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.35);
+            box-shadow: 
+                0 8px 20px rgba(0, 0, 0, 0.3),
+                0 3px 8px rgba(0, 0, 0, 0.15),
+                0 0 0 4px rgba(255, 255, 255, 0.1),
+                inset 0 -3px 6px rgba(0, 0, 0, 0.2),
+                inset 0 3px 6px rgba(255, 255, 255, 0.3);
+        }
+
+        .color-dot:active {
+            transform: scale(1.15) translateY(0px);
+            box-shadow: 
+                0 4px 10px rgba(0, 0, 0, 0.25),
+                inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* 调色板图标样式 - 彩虹渐变 */
+        .color-dot.palette-icon {
+            background: conic-gradient(
+                from 0deg,
+                #ff0000 0deg,
+                #ff8800 45deg,
+                #ffff00 90deg,
+                #88ff00 135deg,
+                #00ff00 180deg,
+                #00ff88 225deg,
+                #00ffff 270deg,
+                #0088ff 315deg,
+                #0000ff 360deg,
+                #8800ff 405deg,
+                #ff00ff 450deg,
+                #ff0088 495deg,
+                #ff0000 540deg
+            );
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .color-dot.palette-icon::before {
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.5) 0%,
+                rgba(255, 255, 255, 0.1) 50%,
+                transparent 100%
+            );
+        }
+
+        .drag-drop-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 40px 20px;
+            margin: 20px 0;
+            text-align: center;
+            background-color: var(--card-bg-color);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            display: none !important; /* 默认隐藏，使用!important确保优先级 */
+        }
+        
+        .drag-drop-area.show {
+            display: block !important; /* 显示时使用!important确保优先级 */
+        }
+
+        .drag-drop-area:hover {
+            border-color: var(--active-blue);
+            background-color: rgba(139, 196, 255, 0.1);
+        }
+
+        .drag-drop-area.drag-over {
+            border-color: var(--active-blue);
+            background-color: rgba(139, 196, 255, 0.15);
+            transform: scale(1.02);
+        }
+
+        .drag-drop-content {
+            pointer-events: none;
+        }
+
+        .drag-icon {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 16px;
+            opacity: 0.7;
+            color: var(--text-secondary-color);
+        }
+
+        .drag-drop-area h3 {
+            margin: 0 0 8px 0;
+            font-size: 18px;
+            color: var(--text-color);
+        }
+
+        .drag-hint {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            color: var(--text-secondary-color);
+        }
+
+        .drag-restrictions {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-secondary-color);
+            opacity: 0.8;
+        }
+
+        .drag-empty-hint {
+            margin: 16px 0 0 0;
+            font-size: 14px;
+            color: var(--text-secondary-color);
+            font-style: italic;
+            opacity: 0.9;
+        }
+
+        .wallpaper-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            padding-top: 10px;
+        }
+
+        .wallpaper-item {
+            display: block;
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: var(--card-bg-color);
+            aspect-ratio: 16 / 10;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .wallpaper-item:hover {
+            transform: scale(1.03);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .wallpaper-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        /* 【新增】虚拟滚动图片加载状态 */
+        .virtual-scroll-img {
+            background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s ease-in-out infinite;
+        }
+        
+        .virtual-scroll-img.loading {
+            animation: skeleton-loading 1s ease-in-out infinite;
+        }
+        
+        .virtual-scroll-img.loaded {
+            background: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes skeleton-loading {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* 纯色壁纸缩略图样式 */
+        .wallpaper-thumbnail {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: rgba(244, 67, 54, 0.9);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        .wallpaper-item:hover .delete-btn {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .delete-btn:hover {
+            background-color: rgba(211, 47, 47, 1);
+            transform: scale(1.1);
+        }
+
+        .delete-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .controls {
+            text-align: center;
+            padding: 40px 0;
+        }
+        
+        .load-more-btn {
+            padding: 12px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: var(--card-bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 25px;
+            transition: all 0.2s;
+        }
+
+        .load-more-btn:hover {
+            background-color: #4a545f;
+            border-color: #5a646f;
+        }
+
+        .load-more-btn:disabled {
+            background-color: #222;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .loader {
+            font-size: 16px;
+            color: var(--text-secondary-color);
+            padding: 20px;
+            text-align: center;
+        }
+
+        #lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        #lightbox.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        #lightbox-img {
+            max-width: 90vw;
+            max-height: 85vh;
+            object-fit: contain;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
+            transform: scale(0.95);
+        }
+        
+        #lightbox.visible #lightbox-img {
+            transform: scale(1);
+        }
+
+        #lightbox-controls {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            cursor: default;
+        }
+
+        .lightbox-btn {
+            display: inline-block;
+            padding: 12px;
+            background-color: rgba(42, 52, 63, 0.8);
+            border-radius: 50%;
+            color: white;
+            line-height: 0;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+        }
+
+        .lightbox-btn:hover {
+            background-color: var(--active-blue);
+        }
+
+        .lightbox-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+        }
+
+        @media (max-width: 1200px) {
+            .wallpaper-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 15px 15px;
+            }
+            
+            .wallpaper-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 12px;
+            }
+            
+            .header-sticky-wrapper {
+                padding: 12px 15px 0;
+                margin: 0 -15px 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .wallpaper-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 10px;
+            }
+            
+            .nav-btn {
+                padding: 5px 14px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header class="header-sticky-wrapper">
+            <div class="main-nav-bar">
+                <nav class="top-nav">
+                    <a href="index.html" class="home-btn" title="返回主页">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                        </svg>
+                        <span>返回主页</span>
+                    </a>
+                    <button class="nav-btn active" data-source="qihu360">🔥 360壁纸（推荐）</button>
+                    <button class="nav-btn" data-source="bing">🌄 必应历史</button>
+                    <button class="nav-btn" data-source="solidcolor">🎨 纯色</button>
+                    <button class="nav-btn" data-source="myuploads">📁 我的上传</button>
+                </nav>
+                <input type="file" id="upload-input" accept="image/*" multiple style="display: none;">
+            </div>
+            
+            <div id="qihu360-subnav" class="sub-nav" style="display: flex;">
+                <!-- 360壁纸分类按钮将在这里动态生成 -->
+                <div class="search-box">
+                    <input type="text" id="qihu360-search-input" class="search-input" placeholder="智能搜索：美女、风景、动漫、汽车...">
+                    <button id="qihu360-search-btn" class="search-btn" title="搜索">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="bing-date-nav" class="sub-nav" style="display: none;">
+                <button class="subnav-btn" data-days="1">今天</button>
+                <button class="subnav-btn active" data-days="7">最近7天</button>
+                <button class="subnav-btn" data-days="30">最近30天</button>
+                <button class="subnav-btn" data-days="60">最近60天</button>
+            </div>
+            
+            <div id="solid-color-nav" class="sub-nav" style="display: none;">
+                <div class="color-picker-section">
+                    <div class="color-picker-title">自定义颜色</div>
+                    
+                    <!-- 第一行：预设颜色 -->
+                    <div class="color-dots-row" id="preset-colors-row">
+                        <div class="color-dot" style="background-color: #ffffff;" data-color="#ffffff" title="白色"></div>
+                        <div class="color-dot" style="background-color: #4285f4;" data-color="#4285f4" title="蓝色"></div>
+                        <div class="color-dot" style="background-color: #34a853;" data-color="#34a853" title="绿色"></div>
+                        <div class="color-dot" style="background-color: #1e3c72;" data-color="#1e3c72" title="深蓝"></div>
+                        <div class="color-dot" style="background-color: #9c27b0;" data-color="#9c27b0" title="紫色"></div>
+                        <div class="color-dot" style="background-color: #00bcd4;" data-color="#00bcd4" title="青色"></div>
+                        <div class="color-dot" style="background-color: #4caf50;" data-color="#4caf50" title="绿色"></div>
+                        <div class="color-dot" style="background-color: #ffeb3b;" data-color="#ffeb3b" title="黄色"></div>
+                        <div class="color-dot" style="background-color: #ff9800;" data-color="#ff9800" title="橙色"></div>
+                        <div class="color-dot" style="background-color: #f44336;" data-color="#f44336" title="红色"></div>
+                        <div class="color-dot" style="background-color: #795548;" data-color="#795548" title="棕色"></div>
+                        <div class="color-dot" style="background-color: #607d8b;" data-color="#607d8b" title="蓝灰"></div>
+                        <div class="color-dot" style="background-color: #000000;" data-color="#000000" title="黑色"></div>
+                        <div class="color-dot palette-icon" data-color="palette" title="自定义颜色"></div>
+                    </div>
+                    
+                    <!-- 第二行：最近使用的颜色 -->
+                    <div class="color-dots-row" id="recent-colors-row" style="display: none;">
+                        <!-- 最近使用的颜色会动态添加到这里 -->
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- 拖拽上传区域 -->
+            <div id="drag-drop-area" class="drag-drop-area">
+                <div class="drag-drop-content">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="drag-icon">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                    </svg>
+                    <h3>拖拽图片到此处上传</h3>
+                    <p class="drag-hint">支持 JPG、PNG、GIF、WebP 格式</p>
+                    <p class="drag-restrictions">单张图片限制：10MB 以内（自动压缩到1920×1080）</p>
+                    <p class="drag-restrictions">总存储容量：50MB+（IndexedDB）</p>
+                    <p class="drag-restrictions">文件名长度：255字符以内</p>
+                    <p class="drag-empty-hint">还没有上传任何图片，快来添加你喜欢的壁纸吧！</p>
+                </div>
+            </div>
+            
+            <div class="wallpaper-grid" id="wallpaper-grid"></div>
+            <div class="controls" id="controls">
+                <p class="loader" id="loader" style="display: none;">加载中...</p>
+                <button id="load-more-btn" class="load-more-btn" style="display: none !important;">加载更多</button>
+            </div>
+        </main>
+    </div>
+
+    <div id="lightbox">
+        <img src="" alt="全屏预览" id="lightbox-img">
+        <div id="lightbox-controls">
+            <button id="set-background-btn" class="lightbox-btn" title="设为背景">
+                <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            </button>
+            <a href="#" id="download-btn" class="lightbox-btn" download title="下载壁纸">
+                <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+            </a>
+        </div>
+    </div>
+
+    <!-- 【P0优化】IndexedDB存储管理器 -->
+    <script src="js/utils/indexeddb-storage.js"></script>
+    <script src="js/wallpaper-standalone.js"></script>
+</body>
+</html>

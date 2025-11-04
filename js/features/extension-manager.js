@@ -1,0 +1,1896 @@
+import { logger } from '../logger.js';
+import { eventManager } from '../eventManager.js';
+import { timerManager } from '../utils/timerManager.js';
+import { state } from '../state.js';
+import { core } from '../core.js';
+
+// =================================================================
+// 扩展管理模块
+// =================================================================
+export const extensionManager = {
+    // 事件监听器ID存储
+    eventIds: [],
+    
+    // 图标缓存（避免重复请求）
+    iconCache: new Map(),
+    
+    // 当前视图模式：'list' 或 'icon'
+    currentView: 'list',
+    
+    // 是否使用分组视图
+    useGroupView: false,
+    
+    /**
+     * 初始化扩展管理模块
+     */
+    init() {
+        logger.debug('[ExtensionManager] 初始化扩展管理模块');
+        
+        // 从userData加载保存的视图偏好
+        if (state.userData && state.userData.extensionSettings) {
+            if (state.userData.extensionSettings.viewMode) {
+                this.currentView = state.userData.extensionSettings.viewMode;
+            }
+            if (state.userData.extensionSettings.useGroupView !== undefined) {
+                this.useGroupView = state.userData.extensionSettings.useGroupView;
+            }
+        }
+        
+        // 初始化分组数据
+        this.initGroups();
+        
+        // 绑定视图切换按钮事件
+        this.bindViewToggleEvents();
+        
+        // 绑定分组管理按钮事件
+        this.bindGroupManagementEvents();
+    },
+    
+    /**
+     * 初始化分组数据
+     */
+    initGroups() {
+        if (!state.userData) {
+            state.userData = {};
+        }
+        if (!state.userData.extensionSettings) {
+            state.userData.extensionSettings = {};
+        }
+        if (!Array.isArray(state.userData.extensionSettings.groups)) {
+            state.userData.extensionSettings.groups = [];
+        }
+    },
+    
+    /**
+     * 获取所有分组
+     */
+    getGroups() {
+        this.initGroups();
+        return state.userData.extensionSettings.groups;
+    },
+    
+    /**
+     * 保存分组
+     */
+    saveGroups() {
+        core.saveUserData(() => {});
+    },
+    
+    /**
+     * 创建新分组
+     * @param {string} name - 分组名称
+     * @returns {Object} 新分组对象
+     */
+    createGroup(name) {
+        const groups = this.getGroups();
+        const newGroup = {
+            id: `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name: name || '未命名分组',
+            extensionIds: []
+        };
+        groups.push(newGroup);
+        this.saveGroups();
+        return newGroup;
+    },
+    
+    /**
+     * 删除分组
+     * @param {string} groupId - 分组ID
+     */
+    deleteGroup(groupId) {
+        const groups = this.getGroups();
+        const index = groups.findIndex(g => g.id === groupId);
+        if (index !== -1) {
+            groups.splice(index, 1);
+            this.saveGroups();
+        }
+    },
+    
+    /**
+     * 更新分组
+     * @param {string} groupId - 分组ID
+     * @param {Object} updates - 更新内容
+     */
+    updateGroup(groupId, updates) {
+        const groups = this.getGroups();
+        const group = groups.find(g => g.id === groupId);
+        if (group) {
+            Object.assign(group, updates);
+            this.saveGroups();
+        }
+    },
+    
+    /**
+     * 将扩展添加到分组
+     * @param {string} extensionId - 扩展ID
+     * @param {string} groupId - 分组ID
+     */
+    addExtensionToGroup(extensionId, groupId) {
+        // 先从其他分组中移除
+        const groups = this.getGroups();
+        groups.forEach(group => {
+            const index = group.extensionIds.indexOf(extensionId);
+            if (index !== -1) {
+                group.extensionIds.splice(index, 1);
+            }
+        });
+        
+        // 添加到目标分组
+        const targetGroup = groups.find(g => g.id === groupId);
+        if (targetGroup && !targetGroup.extensionIds.includes(extensionId)) {
+            targetGroup.extensionIds.push(extensionId);
+            this.saveGroups();
+        }
+    },
+    
+    /**
+     * 从分组中移除扩展
+     * @param {string} extensionId - 扩展ID
+     */
+    removeExtensionFromGroup(extensionId) {
+        const groups = this.getGroups();
+        groups.forEach(group => {
+            const index = group.extensionIds.indexOf(extensionId);
+            if (index !== -1) {
+                group.extensionIds.splice(index, 1);
+            }
+        });
+        this.saveGroups();
+    },
+    
+    /**
+     * 获取扩展所属的分组
+     * @param {string} extensionId - 扩展ID
+     * @returns {Object|null} 分组对象
+     */
+    getExtensionGroup(extensionId) {
+        const groups = this.getGroups();
+        return groups.find(g => g.extensionIds.includes(extensionId)) || null;
+    },
+    
+    /**
+     * 一键启用/禁用分组
+     * @param {string} groupId - 分组ID
+     * @param {boolean} enabled - 是否启用
+     */
+    async toggleGroup(groupId, enabled) {
+        const groups = this.getGroups();
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return;
+        
+        try {
+            // 批量设置扩展状态
+            const promises = group.extensionIds.map(extId => 
+                this.setEnabled(extId, enabled).catch(err => {
+                    logger.warn(`[ExtensionManager] 无法${enabled ? '启用' : '禁用'}扩展 ${extId}:`, err);
+                })
+            );
+            
+            await Promise.all(promises);
+            
+            // 重新渲染列表
+            const searchInput = document.getElementById('extension-search-input');
+            const searchQuery = searchInput ? searchInput.value.trim() : '';
+            await this.renderExtensionList(searchQuery);
+        } catch (error) {
+            logger.error(`[ExtensionManager] 一键${enabled ? '启用' : '禁用'}分组失败:`, error);
+            throw error;
+        }
+    },
+    
+    /**
+     * 获取当前视图模式
+     */
+    getCurrentView() {
+        return this.currentView;
+    },
+    
+    /**
+     * 设置视图模式
+     * @param {string} view - 'list' 或 'icon'
+     */
+    setView(view) {
+        if (view !== 'list' && view !== 'icon') {
+            logger.warn('[ExtensionManager] 无效的视图模式:', view);
+            return;
+        }
+        
+        this.currentView = view;
+        
+        // 保存到userData
+        if (!state.userData) {
+            state.userData = {};
+        }
+        if (!state.userData.extensionSettings) {
+            state.userData.extensionSettings = {};
+        }
+        state.userData.extensionSettings.viewMode = view;
+        core.saveUserData(() => {});
+        
+        // 更新按钮状态
+        this.updateViewToggleButtons();
+        
+        // 重新渲染列表（使用当前搜索关键词）
+        const searchInput = document.getElementById('extension-search-input');
+        const searchQuery = searchInput ? searchInput.value.trim() : '';
+        this.renderExtensionList(searchQuery);
+    },
+    
+    /**
+     * 更新视图切换按钮状态
+     */
+    updateViewToggleButtons() {
+        const listBtn = document.getElementById('extension-view-list-btn');
+        const iconBtn = document.getElementById('extension-view-icon-btn');
+        
+        if (listBtn && iconBtn) {
+            if (this.currentView === 'list') {
+                listBtn.classList.add('active');
+                iconBtn.classList.remove('active');
+            } else {
+                listBtn.classList.remove('active');
+                iconBtn.classList.add('active');
+            }
+        }
+    },
+    
+    /**
+     * 绑定视图切换按钮事件
+     */
+    bindViewToggleEvents() {
+        const listBtn = document.getElementById('extension-view-list-btn');
+        const iconBtn = document.getElementById('extension-view-icon-btn');
+        
+        if (listBtn) {
+            const eventId = eventManager.add(listBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.setView('list');
+            });
+            this.eventIds.push(eventId);
+        }
+        
+        if (iconBtn) {
+            const eventId = eventManager.add(iconBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.setView('icon');
+            });
+            this.eventIds.push(eventId);
+        }
+        
+        // 初始化按钮状态
+        this.updateViewToggleButtons();
+    },
+    
+    /**
+     * 绑定分组管理按钮事件
+     */
+    bindGroupManagementEvents() {
+        const manageGroupsBtn = document.getElementById('extension-manage-groups-btn');
+        const toggleGroupViewBtn = document.getElementById('extension-toggle-group-view-btn');
+        
+        if (manageGroupsBtn) {
+            const eventId = eventManager.add(manageGroupsBtn, 'click', () => {
+                this.showGroupManagementModal();
+            });
+            this.eventIds.push(eventId);
+        }
+        
+        if (toggleGroupViewBtn) {
+            const eventId = eventManager.add(toggleGroupViewBtn, 'click', () => {
+                this.useGroupView = !this.useGroupView;
+                if (!state.userData.extensionSettings) {
+                    state.userData.extensionSettings = {};
+                }
+                state.userData.extensionSettings.useGroupView = this.useGroupView;
+                core.saveUserData(() => {});
+                
+                // 更新按钮状态
+                toggleGroupViewBtn.classList.toggle('active', this.useGroupView);
+                
+                // 重新渲染
+                const searchInput = document.getElementById('extension-search-input');
+                const searchQuery = searchInput ? searchInput.value.trim() : '';
+                this.renderExtensionList(searchQuery);
+            });
+            this.eventIds.push(eventId);
+            
+            // 初始化按钮状态
+            toggleGroupViewBtn.classList.toggle('active', this.useGroupView);
+        }
+    },
+    
+    /**
+     * 显示分组管理模态框
+     */
+    showGroupManagementModal() {
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay visible';
+        modal.style.cssText = 'z-index: 10000;';
+        
+        const groups = this.getGroups();
+        const allExtensions = []; // 需要异步获取，先显示UI
+        
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h3>管理扩展分组</h3>
+                    <button class="modal-close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 16px;">
+                        <button id="extension-create-group-btn" class="effects-btn effects-btn-sm">
+                            + 新建分组
+                        </button>
+                    </div>
+                    <div id="extension-groups-list"></div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // 关闭按钮
+        const closeBtn = modal.querySelector('.modal-close-btn');
+        const closeModal = () => {
+            modal.remove();
+        };
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        
+        // 新建分组按钮
+        const createBtn = modal.querySelector('#extension-create-group-btn');
+        createBtn.addEventListener('click', () => {
+            const name = prompt('请输入分组名称：');
+            if (name && name.trim()) {
+                this.createGroup(name.trim());
+                this.renderGroupsList(modal.querySelector('#extension-groups-list'));
+            }
+        });
+        
+        // 渲染分组列表
+        this.renderGroupsList(modal.querySelector('#extension-groups-list'));
+    },
+    
+    /**
+     * 渲染分组列表
+     * @param {HTMLElement} container - 容器元素
+     */
+    async renderGroupsList(container) {
+        const groups = this.getGroups();
+        const allExtensions = await this.getAllExtensions();
+        const extMap = new Map(allExtensions.map(ext => [ext.id, ext]));
+        
+        container.innerHTML = '';
+        
+        if (groups.length === 0) {
+            container.innerHTML = '<p style="color: rgba(255,255,255,0.6); text-align: center; padding: 20px;">暂无分组，点击"新建分组"创建</p>';
+            return;
+        }
+        
+        groups.forEach(group => {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'extension-group-item';
+            groupDiv.style.cssText = `
+                padding: 12px;
+                margin-bottom: 12px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+            `;
+            
+            const extensions = group.extensionIds.map(id => extMap.get(id)).filter(Boolean);
+            const enabledCount = extensions.filter(ext => ext.enabled).length;
+            
+            groupDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div>
+                        <strong style="color: rgba(255,255,255,0.9);">${this.escapeHtml(group.name)}</strong>
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.6); margin-left: 8px;">
+                            (${extensions.length} 个扩展, ${enabledCount} 已启用)
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="extension-group-enable-btn effects-btn effects-btn-sm" 
+                                data-group-id="${group.id}" 
+                                title="一键启用">
+                            启用
+                        </button>
+                        <button class="extension-group-disable-btn effects-btn effects-btn-sm" 
+                                data-group-id="${group.id}"
+                                title="一键禁用">
+                            禁用
+                        </button>
+                        <button class="extension-group-edit-btn effects-btn effects-btn-sm" 
+                                data-group-id="${group.id}">
+                            编辑
+                        </button>
+                        <button class="extension-group-delete-btn effects-btn effects-btn-sm effects-btn-danger" 
+                                data-group-id="${group.id}">
+                            删除
+                        </button>
+                    </div>
+                </div>
+                <div class="extension-group-extensions" style="font-size: 11px; color: rgba(255,255,255,0.7);">
+                    ${extensions.length > 0 
+                        ? extensions.map(ext => `<span style="margin-right: 8px;">${this.escapeHtml(ext.name)}</span>`).join('')
+                        : '<span style="color: rgba(255,255,255,0.4);">暂无扩展</span>'
+                    }
+                </div>
+            `;
+            
+            container.appendChild(groupDiv);
+        });
+        
+        // 绑定事件
+        container.querySelectorAll('.extension-group-enable-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const groupId = btn.dataset.groupId;
+                btn.disabled = true;
+                btn.textContent = '启用中...';
+                try {
+                    await this.toggleGroup(groupId, true);
+                } catch (error) {
+                    alert(`启用失败: ${error.message}`);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '启用';
+                }
+            });
+        });
+        
+        container.querySelectorAll('.extension-group-disable-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const groupId = btn.dataset.groupId;
+                btn.disabled = true;
+                btn.textContent = '禁用中...';
+                try {
+                    await this.toggleGroup(groupId, false);
+                } catch (error) {
+                    alert(`禁用失败: ${error.message}`);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '禁用';
+                }
+            });
+        });
+        
+        container.querySelectorAll('.extension-group-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const groupId = btn.dataset.groupId;
+                const group = groups.find(g => g.id === groupId);
+                if (group) {
+                    const newName = prompt('请输入新名称：', group.name);
+                    if (newName && newName.trim()) {
+                        this.updateGroup(groupId, { name: newName.trim() });
+                        this.renderGroupsList(container);
+                    }
+                }
+            });
+        });
+        
+        container.querySelectorAll('.extension-group-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const groupId = btn.dataset.groupId;
+                const group = groups.find(g => g.id === groupId);
+                if (group && confirm(`确定要删除分组 "${group.name}" 吗？\n扩展不会被卸载，只是从分组中移除。`)) {
+                    this.deleteGroup(groupId);
+                    this.renderGroupsList(container);
+                }
+            });
+        });
+    },
+    
+    /**
+     * 获取所有已安装的扩展
+     * @returns {Promise<Array>} 扩展列表
+     */
+    async getAllExtensions() {
+        try {
+            if (!chrome || !chrome.management) {
+                logger.warn('[ExtensionManager] Chrome management API 不可用');
+                return [];
+            }
+            
+            const extensions = await chrome.management.getAll();
+            // 过滤掉自身
+            const currentId = chrome.runtime.id;
+            return extensions.filter(ext => ext.id !== currentId);
+        } catch (error) {
+            logger.error('[ExtensionManager] 获取扩展列表失败:', error);
+            return [];
+        }
+    },
+    
+    /**
+     * 启用/禁用扩展
+     * @param {string} extensionId - 扩展ID
+     * @param {boolean} enabled - 是否启用
+     */
+    async setEnabled(extensionId, enabled) {
+        try {
+            if (!chrome || !chrome.management) {
+                throw new Error('Chrome management API 不可用');
+            }
+            
+            await chrome.management.setEnabled(extensionId, enabled);
+            logger.debug(`[ExtensionManager] 扩展 ${extensionId} ${enabled ? '已启用' : '已禁用'}`);
+            return true;
+        } catch (error) {
+            logger.error(`[ExtensionManager] ${enabled ? '启用' : '禁用'}扩展失败:`, error);
+            throw error;
+        }
+    },
+    
+    /**
+     * 卸载扩展
+     * @param {string} extensionId - 扩展ID
+     */
+    async uninstall(extensionId) {
+        try {
+            if (!chrome || !chrome.management) {
+                throw new Error('Chrome management API 不可用');
+            }
+            
+            await chrome.management.uninstall(extensionId);
+            logger.debug(`[ExtensionManager] 扩展 ${extensionId} 已卸载`);
+            return true;
+        } catch (error) {
+            logger.error(`[ExtensionManager] 卸载扩展失败:`, error);
+            throw error;
+        }
+    },
+    
+    /**
+     * 打开扩展详情页面
+     * @param {string} extensionId - 扩展ID
+     */
+    openExtensionDetails(extensionId) {
+        try {
+            chrome.tabs.create({
+                url: `chrome://extensions/?id=${extensionId}`
+            });
+        } catch (error) {
+            logger.error('[ExtensionManager] 打开扩展详情失败:', error);
+        }
+    },
+    
+    /**
+     * 搜索扩展
+     * @param {string} query - 搜索关键词
+     * @param {Array} extensions - 扩展列表
+     * @returns {Array} 搜索结果
+     */
+    searchExtensions(query, extensions) {
+        if (!query || !query.trim()) {
+            return extensions;
+        }
+        
+        const lowerQuery = query.toLowerCase().trim();
+        return extensions.filter(ext => {
+            const name = (ext.name || '').toLowerCase();
+            const description = (ext.description || '').toLowerCase();
+            const version = (ext.version || '').toLowerCase();
+            return name.includes(lowerQuery) || 
+                   description.includes(lowerQuery) || 
+                   version.includes(lowerQuery);
+        });
+    },
+    
+    /**
+     * 渲染扩展列表
+     * @param {string} searchQuery - 可选的搜索关键词
+     */
+    async renderExtensionList(searchQuery = '') {
+        const listContainer = document.getElementById('extension-list');
+        if (!listContainer) {
+            logger.warn('[ExtensionManager] 扩展列表容器未找到');
+            return;
+        }
+        
+        // 清空现有内容
+        listContainer.innerHTML = '';
+        
+        // 检查API是否可用
+        if (!chrome || !chrome.management) {
+            listContainer.innerHTML = `
+                <div class="effects-empty-state">
+                    <p style="color: rgba(255,255,255,0.6); text-align: center; padding: 20px;">
+                        扩展管理功能需要 management 权限，请检查扩展权限设置。
+                    </p>
+                </div>
+            `;
+            return;
+        }
+        
+        try {
+            // 显示加载状态
+            listContainer.innerHTML = `
+                <div class="effects-empty-state">
+                    <p style="color: rgba(255,255,255,0.6); text-align: center; padding: 20px;">
+                        正在加载扩展列表...
+                    </p>
+                </div>
+            `;
+            
+            let extensions = await this.getAllExtensions();
+            
+            // 如果有关键词，进行搜索过滤
+            if (searchQuery && searchQuery.trim()) {
+                extensions = this.searchExtensions(searchQuery, extensions);
+            }
+            
+            if (extensions.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="effects-empty-state">
+                        <p style="color: rgba(255,255,255,0.6); text-align: center; padding: 20px;">
+                            没有找到已安装的扩展。
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 清空加载状态
+            listContainer.innerHTML = '';
+            
+            // 根据当前视图模式设置容器类
+            if (this.currentView === 'icon') {
+                listContainer.classList.add('extension-icon-view');
+                listContainer.classList.remove('extension-list-view');
+            } else {
+                listContainer.classList.add('extension-list-view');
+                listContainer.classList.remove('extension-icon-view');
+            }
+            
+            // 计算统计数据用于日志
+            const enabledCount = extensions.filter(ext => ext.enabled).length;
+            const disabledCount = extensions.length - enabledCount;
+            
+            // 根据是否使用分组视图渲染
+            if (this.useGroupView) {
+                await this.renderGroupView(listContainer, extensions);
+            } else {
+                // 根据当前视图模式渲染
+                if (this.currentView === 'icon') {
+                    await this.renderIconView(listContainer, extensions);
+                } else {
+                    await this.renderListView(listContainer, extensions);
+                }
+            }
+            
+            // 绑定事件
+            this.bindExtensionListEvents();
+            this.bindSearchEvents();
+            
+            logger.debug(`[ExtensionManager] 已渲染 ${extensions.length} 个扩展 (${enabledCount} 已启用, ${disabledCount} 已禁用)`);
+        } catch (error) {
+            logger.error('[ExtensionManager] 渲染扩展列表失败:', error);
+            listContainer.innerHTML = `
+                <div class="effects-empty-state">
+                    <p style="color: rgba(255,100,100,0.8); text-align: center; padding: 20px;">
+                        加载扩展列表失败: ${error.message}
+                    </p>
+                </div>
+            `;
+        }
+    },
+    
+    /**
+     * 直接从扩展对象的 icons 数组获取图标（最优先）
+     * @param {Object} ext - 扩展对象（包含 icons 数组）
+     * @returns {Promise<string|null>} 图标data URL，失败返回null
+     */
+    async getIconFromExtensionObject(ext) {
+        // 添加详细的调试日志（使用 console.log 确保在生产环境也能看到）
+        console.log(`[ExtensionManager] 🔍 检查扩展对象图标: ${ext?.id || 'unknown'}`, {
+            hasExt: !!ext,
+            hasIcons: !!ext?.icons,
+            iconsType: Array.isArray(ext?.icons),
+            iconsLength: ext?.icons?.length || 0,
+            icons: ext?.icons
+        });
+        
+        if (!ext || !ext.icons || !Array.isArray(ext.icons) || ext.icons.length === 0) {
+            console.log(`[ExtensionManager] ❌ 扩展对象没有图标或图标为空: ${ext?.id || 'unknown'}`, {
+                hasExt: !!ext,
+                hasIcons: !!ext?.icons,
+                iconsType: Array.isArray(ext?.icons),
+                iconsLength: ext?.icons?.length || 0
+            });
+            return null;
+        }
+        
+        // 检查缓存
+        const cacheKey = `direct-${ext.id}`;
+        if (this.iconCache.has(cacheKey)) {
+            const cached = this.iconCache.get(cacheKey);
+            if (cached.success) {
+                logger.debug(`[ExtensionManager] 使用缓存的直接图标: ${ext.id}`);
+                return cached.dataUrl;
+            }
+            return null;
+        }
+        
+        try {
+            // 优先选择最大尺寸的图标
+            const sortedIcons = ext.icons.sort((a, b) => (b.size || 0) - (a.size || 0));
+            const iconUrl = sortedIcons[0].url;
+            
+            console.log(`[ExtensionManager] 📋 找到图标数组，选择图标:`, {
+                totalIcons: ext.icons.length,
+                selectedIcon: sortedIcons[0],
+                iconUrl: iconUrl
+            });
+            
+            // 通过 background script 获取图标（因为需要处理 chrome-extension:// 协议）
+            console.log(`[ExtensionManager] 📤 发送消息到 background script 获取图标...`);
+            const response = await chrome.runtime.sendMessage({
+                action: 'getExtensionIconFromUrl',
+                iconUrl: iconUrl,
+                extensionId: ext.id
+            });
+            
+            console.log(`[ExtensionManager] 📥 收到 background script 响应:`, {
+                hasResponse: !!response,
+                success: response?.success,
+                hasDataUrl: !!response?.dataUrl,
+                error: response?.error
+            });
+            
+            if (response && response.success && response.dataUrl) {
+                // 缓存成功的图标
+                this.iconCache.set(cacheKey, {
+                    success: true,
+                    dataUrl: response.dataUrl,
+                    timestamp: Date.now()
+                });
+                console.log(`[ExtensionManager] ✅ 成功从扩展对象获取图标: ${ext.id}`);
+                return response.dataUrl;
+            } else {
+                // 缓存失败的结果
+                this.iconCache.set(cacheKey, {
+                    success: false,
+                    timestamp: Date.now()
+                });
+                console.log(`[ExtensionManager] ❌ 未能从扩展对象获取图标: ${ext.id}`, {
+                    response: response,
+                    reason: response?.error || '未知错误'
+                });
+                return null;
+            }
+        } catch (error) {
+            console.error(`[ExtensionManager] ❌ 从扩展对象获取图标异常: ${ext.id}`, error);
+            // 缓存失败的结果
+            this.iconCache.set(cacheKey, {
+                success: false,
+                timestamp: Date.now()
+            });
+            return null;
+        }
+    },
+    
+    /**
+     * 从 crxsoso.com 获取扩展图标
+     * @param {string} extensionId - 扩展ID
+     * @returns {Promise<string|null>} 图标data URL，失败返回null
+     */
+    async getIconFromCrxsoso(extensionId) {
+        // 检查缓存
+        if (this.iconCache.has(extensionId)) {
+            const cached = this.iconCache.get(extensionId);
+            if (cached.success) {
+                logger.debug(`[ExtensionManager] 使用缓存的图标: ${extensionId}`);
+                return cached.dataUrl;
+            }
+            // 如果之前失败过，也返回null（避免重复请求失败的图标）
+            return null;
+        }
+        
+        try {
+            logger.debug(`[ExtensionManager] 从 crxsoso.com 获取图标: ${extensionId}`);
+            
+            const response = await chrome.runtime.sendMessage({
+                action: 'getExtensionIconFromCrxsoso',
+                extensionId: extensionId
+            });
+            
+            if (response && response.success && response.dataUrl) {
+                // 缓存成功的图标
+                this.iconCache.set(extensionId, {
+                    success: true,
+                    dataUrl: response.dataUrl,
+                    timestamp: Date.now()
+                });
+                logger.debug(`[ExtensionManager] 成功从 crxsoso.com 获取图标: ${extensionId}`);
+                return response.dataUrl;
+            } else {
+                // 缓存失败的结果（避免重复请求）
+                this.iconCache.set(extensionId, {
+                    success: false,
+                    timestamp: Date.now()
+                });
+                logger.debug(`[ExtensionManager] 未能从 crxsoso.com 获取图标: ${extensionId}`);
+                return null;
+            }
+        } catch (error) {
+            logger.warn(`[ExtensionManager] 从 crxsoso.com 获取图标失败: ${extensionId}`, error);
+            // 缓存失败的结果
+            this.iconCache.set(extensionId, {
+                success: false,
+                timestamp: Date.now()
+            });
+            return null;
+        }
+    },
+    
+    /**
+     * 获取扩展图标（优先使用扩展对象本身的图标，然后 crxsoso.com，最后使用占位图标）
+     * @param {Object} ext - 扩展信息（应包含 icons 数组）
+     * @returns {Promise<string>} 图标URL（data URL或占位图标）
+     */
+    async getExtensionIcon(ext) {
+        console.log(`[ExtensionManager] 🚀 开始获取扩展图标: ${ext.id} (${ext.name})`);
+        
+        // 最优先：直接从扩展对象的 icons 数组获取（Chrome 官方提供的数据）
+        console.log(`[ExtensionManager] 📌 尝试方法1: 从扩展对象获取图标`);
+        const directIcon = await this.getIconFromExtensionObject(ext);
+        if (directIcon) {
+            console.log(`[ExtensionManager] ✅ 方法1成功: 从扩展对象获取到图标`);
+            return directIcon;
+        }
+        console.log(`[ExtensionManager] ❌ 方法1失败: 从扩展对象获取图标失败`);
+        
+        // 如果失败，尝试从 crxsoso.com 获取
+        console.log(`[ExtensionManager] 📌 尝试方法2: 从 crxsoso.com 获取图标`);
+        const crxsosoIcon = await this.getIconFromCrxsoso(ext.id);
+        if (crxsosoIcon) {
+            console.log(`[ExtensionManager] ✅ 方法2成功: 从 crxsoso.com 获取到图标`);
+            return crxsosoIcon;
+        }
+        console.log(`[ExtensionManager] ❌ 方法2失败: 从 crxsoso.com 获取图标失败`);
+        
+        // 如果都失败，使用占位图标
+        console.log(`[ExtensionManager] 🎨 使用占位图标: ${ext.name}`);
+        return this.generatePlaceholderIcon(ext.name, ext.id);
+    },
+    
+    /**
+     * 渲染列表视图
+     * @param {HTMLElement} container - 容器元素
+     * @param {Array} extensions - 扩展列表
+     */
+    async renderListView(container, extensions) {
+        // 按启用状态分组
+        const enabledExtensions = extensions.filter(ext => ext.enabled).sort((a, b) => a.name.localeCompare(b.name));
+        const disabledExtensions = extensions.filter(ext => !ext.enabled).sort((a, b) => a.name.localeCompare(b.name));
+        
+        // 渲染已启用的扩展
+        if (enabledExtensions.length > 0) {
+            const enabledGroup = document.createElement('div');
+            enabledGroup.className = 'extension-group';
+            enabledGroup.innerHTML = `
+                <div class="extension-group-header">
+                    <span class="extension-group-title">已启用 (${enabledExtensions.length})</span>
+                </div>
+                <div class="extension-group-list"></div>
+            `;
+            const enabledList = enabledGroup.querySelector('.extension-group-list');
+            container.appendChild(enabledGroup);
+            
+            // 异步创建扩展项（因为需要获取图标）
+            for (const ext of enabledExtensions) {
+                const item = await this.createExtensionItem(ext);
+                enabledList.appendChild(item);
+            }
+        }
+        
+        // 渲染已禁用的扩展
+        if (disabledExtensions.length > 0) {
+            const disabledGroup = document.createElement('div');
+            disabledGroup.className = 'extension-group';
+            disabledGroup.innerHTML = `
+                <div class="extension-group-header">
+                    <span class="extension-group-title">已禁用 (${disabledExtensions.length})</span>
+                </div>
+                <div class="extension-group-list"></div>
+            `;
+            const disabledList = disabledGroup.querySelector('.extension-group-list');
+            container.appendChild(disabledGroup);
+            
+            // 异步创建扩展项（因为需要获取图标）
+            for (const ext of disabledExtensions) {
+                const item = await this.createExtensionItem(ext);
+                disabledList.appendChild(item);
+            }
+        }
+    },
+    
+    /**
+     * 渲染图标视图
+     * @param {HTMLElement} container - 容器元素
+     * @param {Array} extensions - 扩展列表
+     */
+    async renderIconView(container, extensions) {
+        // 按启用状态分组
+        const enabledExtensions = extensions.filter(ext => ext.enabled).sort((a, b) => a.name.localeCompare(b.name));
+        const disabledExtensions = extensions.filter(ext => !ext.enabled).sort((a, b) => a.name.localeCompare(b.name));
+        
+        // 渲染已启用的扩展
+        if (enabledExtensions.length > 0) {
+            const enabledGroup = document.createElement('div');
+            enabledGroup.className = 'extension-group';
+            enabledGroup.innerHTML = `
+                <div class="extension-group-header">
+                    <span class="extension-group-title">已启用 (${enabledExtensions.length})</span>
+                </div>
+                <div class="extension-icon-grid"></div>
+            `;
+            const enabledGrid = enabledGroup.querySelector('.extension-icon-grid');
+            container.appendChild(enabledGroup);
+            
+            // 异步创建扩展图标项
+            for (const ext of enabledExtensions) {
+                const item = await this.createExtensionIconItem(ext);
+                enabledGrid.appendChild(item);
+            }
+        }
+        
+        // 渲染已禁用的扩展
+        if (disabledExtensions.length > 0) {
+            const disabledGroup = document.createElement('div');
+            disabledGroup.className = 'extension-group';
+            disabledGroup.innerHTML = `
+                <div class="extension-group-header">
+                    <span class="extension-group-title">已禁用 (${disabledExtensions.length})</span>
+                </div>
+                <div class="extension-icon-grid"></div>
+            `;
+            const disabledGrid = disabledGroup.querySelector('.extension-icon-grid');
+            container.appendChild(disabledGroup);
+            
+            // 异步创建扩展图标项
+            for (const ext of disabledExtensions) {
+                const item = await this.createExtensionIconItem(ext);
+                disabledGrid.appendChild(item);
+            }
+        }
+    },
+    
+    /**
+     * 渲染分组视图
+     * @param {HTMLElement} container - 容器元素
+     * @param {Array} extensions - 扩展列表
+     */
+    async renderGroupView(container, extensions) {
+        const groups = this.getGroups();
+        const extMap = new Map(extensions.map(ext => [ext.id, ext]));
+        
+        // 渲染每个分组
+        for (const group of groups) {
+            const groupExtensions = group.extensionIds.map(id => extMap.get(id)).filter(Boolean);
+            
+            if (groupExtensions.length === 0) continue;
+            
+            const enabledCount = groupExtensions.filter(ext => ext.enabled).length;
+            
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'extension-group';
+            groupDiv.innerHTML = `
+                <div class="extension-group-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="extension-group-title">${this.escapeHtml(group.name)}</span>
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.6); margin-left: 8px;">
+                            (${groupExtensions.length} 个扩展, ${enabledCount} 已启用)
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="extension-group-toggle-btn effects-btn effects-btn-sm" 
+                                data-group-id="${group.id}"
+                                data-enabled="${enabledCount === groupExtensions.length}"
+                                title="${enabledCount === groupExtensions.length ? '一键禁用' : '一键启用'}">
+                            ${enabledCount === groupExtensions.length ? '禁用' : '启用'}
+                        </button>
+                    </div>
+                </div>
+                ${this.currentView === 'icon' ? '<div class="extension-icon-grid"></div>' : '<div class="extension-group-list"></div>'}
+            `;
+            
+            const contentContainer = groupDiv.querySelector(this.currentView === 'icon' ? '.extension-icon-grid' : '.extension-group-list');
+            container.appendChild(groupDiv);
+            
+            // 绑定分组切换按钮
+            const toggleBtn = groupDiv.querySelector('.extension-group-toggle-btn');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', async () => {
+                    const allEnabled = enabledCount === groupExtensions.length;
+                    toggleBtn.disabled = true;
+                    toggleBtn.textContent = allEnabled ? '禁用中...' : '启用中...';
+                    try {
+                        await this.toggleGroup(group.id, !allEnabled);
+                    } catch (error) {
+                        alert(`操作失败: ${error.message}`);
+                    } finally {
+                        toggleBtn.disabled = false;
+                    }
+                });
+            }
+            
+            // 渲染扩展
+            for (const ext of groupExtensions.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (this.currentView === 'icon') {
+                    const item = await this.createExtensionIconItem(ext);
+                    contentContainer.appendChild(item);
+                } else {
+                    const item = await this.createExtensionItem(ext);
+                    contentContainer.appendChild(item);
+                }
+            }
+        }
+        
+        // 渲染未分组的扩展
+        const groupedIds = new Set();
+        groups.forEach(group => {
+            group.extensionIds.forEach(id => groupedIds.add(id));
+        });
+        
+        const ungroupedExtensions = extensions.filter(ext => !groupedIds.has(ext.id));
+        
+        if (ungroupedExtensions.length > 0) {
+            const ungroupedGroup = document.createElement('div');
+            ungroupedGroup.className = 'extension-group';
+            const enabledCount = ungroupedExtensions.filter(ext => ext.enabled).length;
+            ungroupedGroup.innerHTML = `
+                <div class="extension-group-header">
+                    <span class="extension-group-title">未分组 (${ungroupedExtensions.length})</span>
+                </div>
+                ${this.currentView === 'icon' ? '<div class="extension-icon-grid"></div>' : '<div class="extension-group-list"></div>'}
+            `;
+            
+            const contentContainer = ungroupedGroup.querySelector(this.currentView === 'icon' ? '.extension-icon-grid' : '.extension-group-list');
+            container.appendChild(ungroupedGroup);
+            
+            for (const ext of ungroupedExtensions.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (this.currentView === 'icon') {
+                    const item = await this.createExtensionIconItem(ext);
+                    contentContainer.appendChild(item);
+                } else {
+                    const item = await this.createExtensionItem(ext);
+                    contentContainer.appendChild(item);
+                }
+            }
+        }
+    },
+    
+    /**
+     * 创建扩展列表项
+     * @param {Object} ext - 扩展信息
+     * @returns {HTMLElement} 列表项元素
+     */
+    async createExtensionItem(ext) {
+        const item = document.createElement('div');
+        item.className = 'effects-list-item';
+        item.dataset.extensionId = ext.id;
+        
+        // 获取扩展图标（优先从 crxsoso.com，失败则使用占位图标）
+        const iconUrl = await this.getExtensionIcon(ext);
+        
+        // 状态标识
+        const statusBadge = ext.enabled 
+            ? '<span class="extension-status enabled" title="已启用">●</span>'
+            : '<span class="extension-status disabled" title="已禁用">○</span>';
+        
+        // 类型标识
+        const typeLabel = ext.type === 'hosted_app' ? '应用' : 
+                          ext.type === 'legacy_packaged_app' ? '打包应用' :
+                          ext.type === 'theme' ? '主题' : '扩展';
+        
+        // 创建图标容器
+        const iconContainer = document.createElement('div');
+        iconContainer.className = 'effects-list-item-icon';
+        
+        // 创建图片元素（使用占位图标）
+        const img = document.createElement('img');
+        img.src = iconUrl;
+        img.alt = this.escapeHtml(ext.name);
+        img.loading = 'lazy';
+        img.title = ext.name;
+        img.className = 'extension-icon';
+        
+        iconContainer.appendChild(img);
+        
+        // 创建内容区域
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'effects-list-item-content';
+        contentDiv.innerHTML = `
+            <div class="effects-list-item-title">
+                ${statusBadge}
+                <span>${this.escapeHtml(ext.name)}</span>
+            </div>
+            <div class="effects-list-item-description">
+                ${this.escapeHtml(ext.version || '未知版本')} • ${typeLabel}
+            </div>
+        `;
+        
+        // 创建操作按钮区域
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'effects-list-item-actions';
+        actionsDiv.innerHTML = `
+            <button class="effects-btn effects-btn-sm" 
+                    data-action="toggle-extension" 
+                    data-extension-id="${ext.id}"
+                    data-enabled="${ext.enabled}"
+                    title="${ext.enabled ? '禁用' : '启用'}">
+                ${ext.enabled ? '禁用' : '启用'}
+            </button>
+            <button class="effects-btn effects-btn-sm" 
+                    data-action="extension-details" 
+                    data-extension-id="${ext.id}"
+                    title="查看详情">
+                详情
+            </button>
+            ${!ext.mayDisable ? '' : `
+                <button class="effects-btn effects-btn-sm effects-btn-danger" 
+                        data-action="uninstall-extension" 
+                        data-extension-id="${ext.id}"
+                        title="卸载">
+                    卸载
+                </button>
+            `}
+        `;
+        
+        // 组装item
+        item.appendChild(iconContainer);
+        item.appendChild(contentDiv);
+        item.appendChild(actionsDiv);
+        
+        return item;
+    },
+    
+    /**
+     * 创建扩展图标项（用于图标视图）
+     * @param {Object} ext - 扩展信息
+     * @returns {HTMLElement} 图标项元素
+     */
+    async createExtensionIconItem(ext) {
+        const item = document.createElement('div');
+        item.className = 'extension-icon-item';
+        item.dataset.extensionId = ext.id;
+        
+        // 获取扩展图标
+        const iconUrl = await this.getExtensionIcon(ext);
+        
+        // 创建图标容器
+        const iconContainer = document.createElement('div');
+        iconContainer.className = 'extension-icon-item-icon';
+        if (!ext.enabled) {
+            iconContainer.classList.add('disabled');
+        }
+        
+        // 创建图片元素
+        const img = document.createElement('img');
+        img.src = iconUrl;
+        img.alt = this.escapeHtml(ext.name);
+        img.loading = 'lazy';
+        img.title = `${ext.name}\n版本: ${ext.version || '未知'}\n${ext.enabled ? '已启用' : '已禁用'}`;
+        
+        iconContainer.appendChild(img);
+        
+        // 状态指示器
+        const statusIndicator = document.createElement('div');
+        statusIndicator.className = `extension-icon-status ${ext.enabled ? 'enabled' : 'disabled'}`;
+        statusIndicator.title = ext.enabled ? '已启用' : '已禁用';
+        iconContainer.appendChild(statusIndicator);
+        
+        // 创建名称标签
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'extension-icon-item-name';
+        nameLabel.textContent = ext.name;
+        nameLabel.title = ext.name;
+        
+        // 组装item
+        item.appendChild(iconContainer);
+        item.appendChild(nameLabel);
+        
+        // 右键菜单支持
+        item.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.showIconContextMenu(e, ext, item);
+        });
+        
+        // 点击打开详情
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.extension-icon-context-menu')) {
+                return; // 如果点击的是右键菜单，不触发
+            }
+            this.openExtensionDetails(ext.id);
+        });
+        
+        return item;
+    },
+    
+    /**
+     * 显示图标视图的右键菜单
+     * @param {Event} e - 事件对象
+     * @param {Object} ext - 扩展信息
+     * @param {HTMLElement} item - 图标项元素
+     */
+    showIconContextMenu(e, ext, item) {
+        // 移除现有的菜单
+        const existingMenu = document.querySelector('.extension-icon-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // 创建菜单
+        const menu = document.createElement('div');
+        menu.className = 'extension-icon-context-menu';
+        menu.style.cssText = `
+            position: fixed;
+            left: ${e.pageX}px;
+            top: ${e.pageY}px;
+            background: rgba(30, 30, 30, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 4px;
+            z-index: 10000;
+            min-width: 150px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        `;
+        
+        const groups = this.getGroups();
+        const currentGroup = this.getExtensionGroup(ext.id);
+        
+        const menuItems = [
+            {
+                text: ext.enabled ? '禁用' : '启用',
+                action: () => this.handleToggleExtension(ext.id, null)
+            },
+            {
+                text: '查看详情',
+                action: () => this.openExtensionDetails(ext.id)
+            },
+            {
+                type: 'divider'
+            },
+            {
+                text: '分配到分组',
+                submenu: true,
+                items: [
+                    ...groups.map(group => ({
+                        text: group.name + (currentGroup && currentGroup.id === group.id ? ' ✓' : ''),
+                        action: () => {
+                            if (currentGroup && currentGroup.id === group.id) {
+                                // 如果已经在当前分组，则移除
+                                this.removeExtensionFromGroup(ext.id);
+                            } else {
+                                // 添加到分组
+                                this.addExtensionToGroup(ext.id, group.id);
+                            }
+                            // 重新渲染列表
+                            const searchInput = document.getElementById('extension-search-input');
+                            const searchQuery = searchInput ? searchInput.value.trim() : '';
+                            this.renderExtensionList(searchQuery);
+                        }
+                    })),
+                    {
+                        text: '新建分组...',
+                        action: () => {
+                            const name = prompt('请输入分组名称：');
+                            if (name && name.trim()) {
+                                const newGroup = this.createGroup(name.trim());
+                                this.addExtensionToGroup(ext.id, newGroup.id);
+                                // 重新渲染列表
+                                const searchInput = document.getElementById('extension-search-input');
+                                const searchQuery = searchInput ? searchInput.value.trim() : '';
+                                this.renderExtensionList(searchQuery);
+                            }
+                        }
+                    }
+                ]
+            }
+        ];
+        
+        if (currentGroup) {
+            menuItems.push({
+                text: '从分组移除',
+                action: () => {
+                    this.removeExtensionFromGroup(ext.id);
+                    // 重新渲染列表
+                    const searchInput = document.getElementById('extension-search-input');
+                    const searchQuery = searchInput ? searchInput.value.trim() : '';
+                    this.renderExtensionList(searchQuery);
+                }
+            });
+        }
+        
+        if (ext.mayDisable) {
+            menuItems.push({
+                type: 'divider'
+            });
+            menuItems.push({
+                text: '卸载',
+                action: () => this.handleUninstallExtension(ext.id, null),
+                danger: true
+            });
+        }
+        
+        menuItems.forEach(menuItem => {
+            if (menuItem.type === 'divider') {
+                const divider = document.createElement('div');
+                divider.style.cssText = `
+                    height: 1px;
+                    background: rgba(255, 255, 255, 0.1);
+                    margin: 4px 0;
+                `;
+                menu.appendChild(divider);
+                return;
+            }
+            
+            if (menuItem.submenu) {
+                // 子菜单项
+                const submenuItem = document.createElement('div');
+                submenuItem.style.cssText = `
+                    position: relative;
+                `;
+                
+                const button = document.createElement('button');
+                button.textContent = menuItem.text + ' ▶';
+                button.style.cssText = `
+                    width: 100%;
+                    padding: 8px 12px;
+                    text-align: left;
+                    background: transparent;
+                    border: none;
+                    color: rgba(255, 255, 255, 0.9);
+                    cursor: pointer;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    transition: background 0.2s;
+                `;
+                
+                const submenu = document.createElement('div');
+                submenu.style.cssText = `
+                    position: absolute;
+                    left: 100%;
+                    top: 0;
+                    margin-left: 4px;
+                    background: rgba(30, 30, 30, 0.95);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    padding: 4px;
+                    min-width: 150px;
+                    display: none;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                `;
+                
+                menuItem.items.forEach(subItem => {
+                    const subButton = document.createElement('button');
+                    subButton.textContent = subItem.text;
+                    subButton.style.cssText = `
+                        width: 100%;
+                        padding: 8px 12px;
+                        text-align: left;
+                        background: transparent;
+                        border: none;
+                        color: rgba(255, 255, 255, 0.9);
+                        cursor: pointer;
+                        border-radius: 4px;
+                        font-size: 13px;
+                        transition: background 0.2s;
+                    `;
+                    subButton.addEventListener('mouseenter', () => {
+                        subButton.style.background = 'rgba(255, 255, 255, 0.1)';
+                    });
+                    subButton.addEventListener('mouseleave', () => {
+                        subButton.style.background = 'transparent';
+                    });
+                    subButton.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        menu.remove();
+                        await subItem.action();
+                    });
+                    submenu.appendChild(subButton);
+                });
+                
+                button.addEventListener('mouseenter', () => {
+                    button.style.background = 'rgba(255, 255, 255, 0.1)';
+                    submenu.style.display = 'block';
+                });
+                button.addEventListener('mouseleave', () => {
+                    button.style.background = 'transparent';
+                    // 延迟隐藏，允许鼠标移动到子菜单
+                    setTimeout(() => {
+                        if (!submenu.matches(':hover')) {
+                            submenu.style.display = 'none';
+                        }
+                    }, 100);
+                });
+                submenu.addEventListener('mouseleave', () => {
+                    submenu.style.display = 'none';
+                });
+                
+                submenuItem.appendChild(button);
+                submenuItem.appendChild(submenu);
+                menu.appendChild(submenuItem);
+            } else {
+                // 普通菜单项
+                const button = document.createElement('button');
+                button.textContent = menuItem.text;
+                button.style.cssText = `
+                    width: 100%;
+                    padding: 8px 12px;
+                    text-align: left;
+                    background: transparent;
+                    border: none;
+                    color: ${menuItem.danger ? 'rgba(255, 100, 100, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
+                    cursor: pointer;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    transition: background 0.2s;
+                `;
+                button.addEventListener('mouseenter', () => {
+                    button.style.background = menuItem.danger ? 'rgba(255, 100, 100, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+                });
+                button.addEventListener('mouseleave', () => {
+                    button.style.background = 'transparent';
+                });
+                button.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    menu.remove();
+                    await menuItem.action();
+                });
+                menu.appendChild(button);
+            }
+        });
+        
+        document.body.appendChild(menu);
+        
+        // 点击其他地方关闭菜单
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu);
+        }, 0);
+    },
+    
+    /**
+     * 检测输入是否为扩展商店链接
+     * @param {string} input - 用户输入
+     * @returns {Object|null} 如果是链接，返回 {type, url, extensionId}，否则返回null
+     */
+    detectExtensionStoreLink(input) {
+        if (!input || !input.trim()) return null;
+        
+        const trimmed = input.trim();
+        
+        // Chrome Web Store 链接格式
+        const chromeWebStorePattern = /^https?:\/\/(?:chrome|chromewebstore)\.google\.com\/webstore\/.+?\/([a-z]{32})(?=[\/#?]|$)/i;
+        const chromeMatch = trimmed.match(chromeWebStorePattern);
+        if (chromeMatch) {
+            return {
+                type: 'chrome',
+                url: trimmed,
+                extensionId: chromeMatch[1],
+                crxsosoUrl: `https://www.crxsoso.com/?auto=1&link=${encodeURIComponent(trimmed)}`
+            };
+        }
+        
+        // Edge Addons 链接格式
+        const edgePattern = /^https?:\/\/microsoftedge\.microsoft\.com\/addons\/.+?\/([a-z]{32})(?=[\/#?]|$)/i;
+        const edgeMatch = trimmed.match(edgePattern);
+        if (edgeMatch) {
+            return {
+                type: 'edge',
+                url: trimmed,
+                extensionId: edgeMatch[1],
+                crxsosoUrl: `https://www.crxsoso.com/?auto=1&link=${encodeURIComponent(trimmed)}`
+            };
+        }
+        
+        // Firefox Addons 链接格式
+        const firefoxPattern = /^https?:\/\/addons\.mozilla\.org\/.+?addon\/([^\/<>"'?#]+)/i;
+        const firefoxMatch = trimmed.match(firefoxPattern);
+        if (firefoxMatch) {
+            return {
+                type: 'firefox',
+                url: trimmed,
+                extensionId: firefoxMatch[1],
+                crxsosoUrl: `https://www.crxsoso.com/?auto=1&link=${encodeURIComponent(trimmed)}`
+            };
+        }
+        
+        // Microsoft Store 链接格式
+        const msStorePattern = /^https?:\/\/(?:apps|www)\.microsoft\.com\/(?:store|p)\/.+?\/([a-zA-Z\d]{10,})(?=[\/#?]|$)/i;
+        const msStoreMatch = trimmed.match(msStorePattern);
+        if (msStoreMatch) {
+            return {
+                type: 'microsoft',
+                url: trimmed,
+                extensionId: msStoreMatch[1],
+                crxsosoUrl: `https://www.crxsoso.com/?auto=1&link=${encodeURIComponent(trimmed)}`
+            };
+        }
+        
+        // Opera Addons 链接格式
+        const operaPattern = /^https?:\/\/addons\.opera\.com\/.*?extensions\/(?:details|download)\/([^\/?#]+)/i;
+        const operaMatch = trimmed.match(operaPattern);
+        if (operaMatch) {
+            return {
+                type: 'opera',
+                url: trimmed,
+                extensionId: operaMatch[1],
+                crxsosoUrl: `https://www.crxsoso.com/?auto=1&link=${encodeURIComponent(trimmed)}`
+            };
+        }
+        
+        // crxsoso.com 链接（直接支持）
+        if (trimmed.includes('crxsoso.com')) {
+            return {
+                type: 'crxsoso',
+                url: trimmed,
+                extensionId: null,
+                crxsosoUrl: trimmed
+            };
+        }
+        
+        return null;
+    },
+    
+    /**
+     * 绑定搜索框事件
+     */
+    bindSearchEvents() {
+        const searchInput = document.getElementById('extension-search-input');
+        if (!searchInput) return;
+        
+        // 清理旧的事件监听器
+        const oldEventId = searchInput._searchEventId;
+        if (oldEventId) {
+            eventManager.remove(oldEventId);
+        }
+        
+        // 绑定回车键事件（用于处理链接跳转）
+        const enterEventId = eventManager.add(searchInput, 'keydown', (e) => {
+            if (e.key === 'Enter') {
+                const query = e.target.value.trim();
+                if (!query) return;
+                
+                // 检测是否为扩展商店链接
+                const linkInfo = this.detectExtensionStoreLink(query);
+                if (linkInfo) {
+                    e.preventDefault();
+                    // 打开 crxsoso.com 链接
+                    chrome.tabs.create({ url: linkInfo.crxsosoUrl });
+                    // 清空输入框
+                    searchInput.value = '';
+                    return;
+                }
+            }
+        });
+        this.eventIds.push(enterEventId);
+        
+        // 使用防抖搜索（用于本地搜索）
+        const eventId = eventManager.add(searchInput, 'input', (e) => {
+            const query = e.target.value.trim();
+            
+            // 如果输入的是链接，不进行本地搜索（等待回车键）
+            if (this.detectExtensionStoreLink(query)) {
+                return;
+            }
+            
+            // 清除之前的定时器
+            timerManager.clearTimeout('extension-search');
+            
+            // 防抖：延迟300ms后执行搜索
+            timerManager.setTimeout('extension-search', async () => {
+                await this.renderExtensionList(query);
+            }, 300);
+        });
+        
+        searchInput._searchEventId = eventId;
+        this.eventIds.push(eventId);
+        
+        // 绑定"搜索扩展"按钮事件
+        const searchBtn = document.getElementById('extension-search-crxsoso-btn');
+        if (searchBtn) {
+            const btnEventId = eventManager.add(searchBtn, 'click', () => {
+                const query = searchInput.value.trim();
+                
+                if (!query) {
+                    // 如果输入框为空，直接打开 crxsoso.com 首页
+                    chrome.tabs.create({ url: 'https://www.crxsoso.com/' });
+                    return;
+                }
+                
+                // 检测是否为扩展商店链接
+                const linkInfo = this.detectExtensionStoreLink(query);
+                if (linkInfo) {
+                    // 打开 crxsoso.com 链接
+                    chrome.tabs.create({ url: linkInfo.crxsosoUrl });
+                } else {
+                    // 按名称搜索
+                    const searchUrl = `https://www.crxsoso.com/search?keyword=${encodeURIComponent(query)}`;
+                    chrome.tabs.create({ url: searchUrl });
+                }
+                
+                // 清空输入框
+                searchInput.value = '';
+            });
+            this.eventIds.push(btnEventId);
+        }
+    },
+    
+    /**
+     * 绑定扩展列表事件
+     */
+    bindExtensionListEvents() {
+        // 清理旧的事件监听器
+        this.eventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this.eventIds = [];
+        
+        const listContainer = document.getElementById('extension-list');
+        if (!listContainer) return;
+        
+        // 使用事件委托处理所有按钮点击
+        const eventId = eventManager.delegate(listContainer, 'click', '[data-action]', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            const action = target.dataset.action;
+            const extensionId = target.dataset.extensionId;
+            
+            if (!extensionId) return;
+            
+            try {
+                switch (action) {
+                    case 'toggle-extension':
+                        await this.handleToggleExtension(extensionId, target);
+                        break;
+                    case 'extension-details':
+                        this.openExtensionDetails(extensionId);
+                        break;
+                    case 'uninstall-extension':
+                        await this.handleUninstallExtension(extensionId, target);
+                        break;
+                }
+            } catch (error) {
+                logger.error(`[ExtensionManager] 处理操作失败:`, error);
+                alert(`操作失败: ${error.message}`);
+            }
+        });
+        
+        this.eventIds.push(eventId);
+    },
+    
+    /**
+     * 处理启用/禁用扩展
+     * @param {string} extensionId - 扩展ID
+     * @param {HTMLElement|null} button - 按钮元素（列表视图中使用，图标视图可能为null）
+     */
+    async handleToggleExtension(extensionId, button) {
+        // 获取当前状态（从按钮或扩展对象）
+        let currentEnabled = false;
+        if (button && button.dataset.enabled) {
+            currentEnabled = button.dataset.enabled === 'true';
+        } else {
+            // 从扩展对象获取状态
+            try {
+                const extensions = await this.getAllExtensions();
+                const ext = extensions.find(e => e.id === extensionId);
+                if (ext) {
+                    currentEnabled = ext.enabled;
+                }
+            } catch (error) {
+                logger.warn('[ExtensionManager] 无法获取扩展状态:', error);
+            }
+        }
+        
+        const newEnabled = !currentEnabled;
+        
+        // 更新按钮状态（如果存在）
+        if (button) {
+            button.disabled = true;
+            button.textContent = newEnabled ? '启用中...' : '禁用中...';
+        }
+        
+        try {
+            await this.setEnabled(extensionId, newEnabled);
+            
+            // 更新按钮状态（如果存在）
+            if (button) {
+                button.dataset.enabled = newEnabled.toString();
+                button.textContent = newEnabled ? '禁用' : '启用';
+                button.disabled = false;
+            }
+            
+            // 重新渲染整个列表（因为需要重新分组）
+            const searchInput = document.getElementById('extension-search-input');
+            const searchQuery = searchInput ? searchInput.value.trim() : '';
+            await this.renderExtensionList(searchQuery);
+        } catch (error) {
+            if (button) {
+                button.disabled = false;
+                button.textContent = currentEnabled ? '禁用' : '启用';
+            }
+            throw error;
+        }
+    },
+    
+    /**
+     * 处理卸载扩展
+     * @param {string} extensionId - 扩展ID
+     * @param {HTMLElement|null} button - 按钮元素（列表视图中使用，图标视图可能为null）
+     */
+    async handleUninstallExtension(extensionId, button) {
+        // 获取扩展名称（从DOM或扩展对象）
+        let extensionName = '此扩展';
+        if (button) {
+            const listItem = button.closest('.effects-list-item');
+            extensionName = listItem?.querySelector('.effects-list-item-title span')?.textContent || '此扩展';
+        } else {
+            // 从扩展对象获取名称
+            try {
+                const extensions = await this.getAllExtensions();
+                const ext = extensions.find(e => e.id === extensionId);
+                if (ext) {
+                    extensionName = ext.name;
+                }
+            } catch (error) {
+                logger.warn('[ExtensionManager] 无法获取扩展名称:', error);
+            }
+        }
+        
+        if (!confirm(`确定要卸载 "${extensionName}" 吗？\n\n此操作无法撤销。`)) {
+            return;
+        }
+        
+        // 更新按钮状态（如果存在）
+        if (button) {
+            button.disabled = true;
+            button.textContent = '卸载中...';
+        }
+        
+        try {
+            await this.uninstall(extensionId);
+            
+            // 重新渲染整个列表（因为需要更新分组）
+            // 保持搜索关键词
+            const searchInput = document.getElementById('extension-search-input');
+            const searchQuery = searchInput ? searchInput.value.trim() : '';
+            await this.renderExtensionList(searchQuery);
+        } catch (error) {
+            if (button) {
+                button.disabled = false;
+                button.textContent = '卸载';
+            }
+            throw error;
+        }
+    },
+    
+    /**
+     * HTML转义
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
+    /**
+     * 生成基于扩展名称的占位图标（SVG data URL）
+     * @param {string} name - 扩展名称
+     * @param {string} id - 扩展ID
+     * @returns {string} data URL
+     */
+    generatePlaceholderIcon(name, id) {
+        // 参考auto-extension-manager项目：生成基于扩展名称的占位图标
+        // 获取扩展名称的首字母或首字符（优先中文，否则英文）
+        let initial = '';
+        if (name) {
+            // 如果是中文，取第一个字符
+            if (/[\u4e00-\u9fa5]/.test(name)) {
+                initial = name.charAt(0);
+            } else {
+                // 否则取第一个大写英文字母
+                const match = name.match(/[a-zA-Z]/);
+                initial = match ? match[0].toUpperCase() : '?';
+            }
+        } else {
+            // 如果没有名称，使用ID的前两个字符
+            initial = id.substring(0, 2).toUpperCase();
+        }
+        
+        // 生成颜色（基于ID的哈希值，确保每个扩展有唯一颜色）
+        // 使用预定义的颜色方案，确保颜色既美观又易区分
+        const hash = this.simpleHash(id || name);
+        const hue = hash % 360;
+        
+        // 使用更丰富的颜色方案，参考auto-extension-manager的视觉设计
+        const colorSchemes = [
+            { bg: `hsl(${hue}, 70%, 50%)`, text: '#ffffff' },      // 深色背景
+            { bg: `hsl(${hue}, 65%, 55%)`, text: '#ffffff' },      // 中等深色
+            { bg: `hsl(${hue}, 60%, 60%)`, text: '#ffffff' },      // 中等
+        ];
+        const scheme = colorSchemes[hash % colorSchemes.length];
+        
+        // 创建SVG图标 - 使用圆形设计，更符合现代扩展管理器的风格
+        const svg = `
+            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="grad-${hash}" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:${scheme.bg};stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:hsl(${(hue + 20) % 360}, 70%, 45%);stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <circle cx="16" cy="16" r="15" fill="url(#grad-${hash})" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                <text x="16" y="21" font-family="Arial, sans-serif" font-size="14" font-weight="bold" 
+                      fill="${scheme.text}" text-anchor="middle" dominant-baseline="middle">${this.escapeHtml(initial)}</text>
+            </svg>
+        `.trim();
+        
+        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+    },
+    
+    /**
+     * 简单哈希函数（用于生成颜色）
+     */
+    simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 转换为32位整数
+        }
+        return Math.abs(hash);
+    },
+    
+    /**
+     * 清理资源
+     */
+    cleanup() {
+        this.eventIds.forEach(id => {
+            if (id) eventManager.remove(id);
+        });
+        this.eventIds = [];
+        
+        // 清理图标缓存（可选：保留最近使用的图标，这里简单清理）
+        // 可以设置缓存大小限制，这里暂时保留所有缓存
+    }
+};
+
