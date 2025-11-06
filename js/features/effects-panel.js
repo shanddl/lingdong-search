@@ -1172,6 +1172,7 @@ class EffectsPanel {
             case 'quick-actions':
             case 'search':
             case 'icons':
+            case 'panel-settings':
             case 'data-management':
                 // 静态内容，不需要动态渲染，直接标记为已渲染
                 this._renderedAccordions.add(accordionType);

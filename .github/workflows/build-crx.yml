@@ -207,13 +207,13 @@ jobs:
             - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
             
             ### ✨ 新增功能
-            - 新增 扩展管理
+            - 新增扩展管理功能
             
             ### 🐛 问题修复
-            - 修复错误
+            - 无
             
             ### ⚡ 性能优化
-            - 增加流畅度
+            - 无
             
             ### 📝 更新内容
             - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更

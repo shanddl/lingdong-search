@@ -174,4 +174,126 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // 5. 扩展图标转换 - chrome://extension-icon/ 转 data URL
+  if (message.action === 'getExtensionIconFromUrl') {
+    (async () => {
+      try {
+        const { iconUrl, extensionId } = message;
+        console.log('[Background] 开始转换扩展图标:', extensionId, iconUrl);
+        
+        if (!iconUrl) {
+          throw new Error('图标URL为空');
+        }
+
+        // 方法1: 尝试直接 fetch（对于 chrome-extension:// 协议可能有效）
+        try {
+          const response = await fetch(iconUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            
+            // 转换为 data URL
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+
+            console.log('[Background] ✅ 图标转换成功 (fetch):', extensionId, dataUrl.substring(0, 50) + '...');
+            sendResponse({ success: true, dataUrl: dataUrl });
+            return;
+          }
+        } catch (fetchError) {
+          console.log('[Background] ⚠️ fetch 失败，尝试其他方法:', fetchError.message);
+        }
+
+        // 方法2: 对于 chrome://extension-icon/ 协议，尝试使用 chrome.management.getIconData
+        if (iconUrl.startsWith('chrome://extension-icon/')) {
+          try {
+            // 使用 chrome.management API 获取图标
+            chrome.management.get(extensionId, (extensionInfo) => {
+              if (chrome.runtime.lastError) {
+                throw new Error(chrome.runtime.lastError.message);
+              }
+
+              // 获取最大尺寸的图标
+              if (extensionInfo.icons && extensionInfo.icons.length > 0) {
+                const largestIcon = extensionInfo.icons.sort((a, b) => (b.size || 0) - (a.size || 0))[0];
+                
+                // 尝试通过 fetch 获取
+                fetch(largestIcon.url)
+                  .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.blob();
+                  })
+                  .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      console.log('[Background] ✅ 图标转换成功 (management):', extensionId);
+                      sendResponse({ success: true, dataUrl: reader.result });
+                    };
+                    reader.onerror = () => sendResponse({ success: false, error: '读取图标失败' });
+                    reader.readAsDataURL(blob);
+                  })
+                  .catch(error => {
+                    console.error('[Background] ❌ 图标转换失败:', error);
+                    sendResponse({ success: false, error: error.message });
+                  });
+              } else {
+                sendResponse({ success: false, error: '扩展没有图标' });
+              }
+            });
+            return; // 异步处理，需要 return
+          } catch (error) {
+            console.error('[Background] ❌ management.get 失败:', error);
+          }
+        }
+
+        // 如果所有方法都失败
+        throw new Error('无法获取扩展图标');
+      } catch (error) {
+        console.error('[Background] ❌ 图标转换失败:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // 异步响应
+  }
+
+  // 6. 从 crxsoso.com 获取扩展图标
+  if (message.action === 'getExtensionIconFromCrxsoso') {
+    (async () => {
+      try {
+        const { extensionId } = message;
+        console.log('[Background] 从 crxsoso 获取图标:', extensionId);
+        
+        // crxsoso.com 的图标URL格式
+        const iconUrl = `https://www.crxsoso.com/webstore/icons/${extensionId}/128/0`;
+        
+        // 下载图标
+        const response = await fetch(iconUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // 转换为 Blob
+        const blob = await response.blob();
+        
+        // 转换为 data URL
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        console.log('[Background] ✅ crxsoso 图标获取成功:', extensionId, dataUrl.substring(0, 50) + '...');
+        sendResponse({ success: true, dataUrl: dataUrl });
+      } catch (error) {
+        console.error('[Background] ❌ crxsoso 图标获取失败:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // 异步响应
+  }
 });
