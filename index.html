@@ -255,38 +255,32 @@
 
             <!-- 分页控件 -->
             <div class="wallpaper-pagination" id="wallpaper-pagination">
-                <button class="wallpaper-page-btn" id="wallpaper-page-prev" title="上一页">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-                    </svg>
-                </button>
+                <div class="wallpaper-page-numbers" id="wallpaper-page-numbers"></div>
                 <div class="wallpaper-page-info">
                     <span id="wallpaper-page-current">1</span>
                     <span class="wallpaper-page-separator">/</span>
                     <span id="wallpaper-page-total">-</span>
                 </div>
-                <button class="wallpaper-page-btn" id="wallpaper-page-next" title="下一页">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-                    </svg>
-                </button>
             </div>
         </div>
 
         <!-- 窗口内全屏预览 -->
         <div class="wallpaper-fullscreen-view" id="wallpaper-fullscreen-view">
-            <img src="" alt="全屏预览" class="wallpaper-fullscreen-img" id="wallpaper-fullscreen-img">
-            <div class="wallpaper-fullscreen-controls">
-                <button class="wallpaper-fullscreen-btn" id="wallpaper-set-bg-btn" title="设为背景">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-                    </svg>
-                </button>
-                <a href="#" class="wallpaper-fullscreen-btn" id="wallpaper-download-btn" download title="下载壁纸">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
-                    </svg>
-                </a>
+            <div class="wallpaper-fullscreen-content">
+                <button id="wallpaper-fullscreen-close-btn" class="wallpaper-fullscreen-close-btn">&times;</button>
+                <img src="" alt="全屏预览" class="wallpaper-fullscreen-img" id="wallpaper-fullscreen-img">
+                <div class="wallpaper-fullscreen-controls">
+                    <button class="wallpaper-fullscreen-btn" id="wallpaper-set-bg-btn" title="设为背景">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                        </svg>
+                    </button>
+                    <a href="#" class="wallpaper-fullscreen-btn" id="wallpaper-download-btn" download title="下载壁纸">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
+                        </svg>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -922,63 +916,6 @@
             <!-- 系统Tab内容 -->
             <div class="effects-tab-content" data-tab-content="system">
                 <div class="effects-accordion-menu">
-                    <!-- 面板设置 -->
-                    <div class="effects-accordion-item" data-accordion="panel-settings">
-                        <div class="effects-accordion-header">
-                            <div class="effects-menu-icon">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
-                                </svg>
-                            </div>
-                            <div class="effects-menu-content">
-                                <div class="effects-menu-label">面板设置</div>
-                                <div class="effects-menu-description">主题和位置</div>
-                            </div>
-                            <div class="effects-menu-arrow">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="effects-accordion-content">
-                            <div class="effects-accordion-body">
-                                <div class="effects-system-section">
-                                    <h4 style="margin: 0 0 12px 0; font-size: 13px; color: rgba(255,255,255,0.85); font-weight: 500;">面板主题</h4>
-                                    <div class="effects-btn-group" style="margin-bottom: 20px;">
-                                        <button class="effects-btn" data-action="set-panel-theme" data-theme="light">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
-                                                <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/>
-                                            </svg>
-                                            亮色
-                                        </button>
-                                        <button class="effects-btn" data-action="set-panel-theme" data-theme="dark">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
-                                                <path d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z"/>
-                                            </svg>
-                                            暗色
-                                        </button>
-                                    </div>
-                                    
-                                    <h4 style="margin: 0 0 12px 0; font-size: 13px; color: rgba(255,255,255,0.85); font-weight: 500;">面板位置</h4>
-                                    <div class="effects-btn-group">
-                                        <button class="effects-btn" data-action="set-panel-position" data-position="left">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
-                                                <path d="M9,3H3V21H9V3M19,3H13V9H19V3M19,11H13V21H19V11Z"/>
-                                            </svg>
-                                            左侧
-                                        </button>
-                                        <button class="effects-btn active" data-action="set-panel-position" data-position="right">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
-                                                <path d="M15,3H21V21H15V3M11,3H5V9H11V3M11,11H5V21H11V11Z"/>
-                                            </svg>
-                                            右侧
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
                     <!-- 数据管理 -->
                     <div class="effects-accordion-item" data-accordion="data-management">
                         <div class="effects-accordion-header">
@@ -989,7 +926,7 @@
                             </div>
                             <div class="effects-menu-content">
                                 <div class="effects-menu-label">数据管理</div>
-                                <div class="effects-menu-description">导入、导出和同步设置</div>
+                                <div class="effects-menu-description">导入和导出设置</div>
                             </div>
                             <div class="effects-menu-arrow">
                                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -1000,14 +937,8 @@
                         <div class="effects-accordion-content">
                             <div class="effects-accordion-body">
                                 <div class="effects-system-section">
-                                    <p class="effects-system-hint">手动同步会将当前所有设置保存到浏览器账户（如果已登录），否则保存到本地。导入操作将会覆盖现有设置。</p>
+                                    <p class="effects-system-hint">导入操作将会覆盖现有设置。</p>
                                     <div class="effects-btn-group" style="flex-direction: column; gap: 8px;">
-                                        <button class="effects-btn" data-action="sync-settings">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
-                                                <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
-                                            </svg>
-                                            手动同步
-                                        </button>
                                         <button class="effects-btn" data-action="import-settings">
                                             <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px; margin-right: 6px;">
                                                 <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>

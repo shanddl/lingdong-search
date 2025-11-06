@@ -6,6 +6,7 @@ import { eventManager } from './eventManager.js';
 import { state } from './state.js';
 import { core } from './core.js';
 import { utils } from './utils.js';
+import { logger } from './logger.js';
 
 /**
  * 通用滑块初始化函数
@@ -38,7 +39,7 @@ export function initSlider(config, globalEventIds, throttleFunc) {
 
     // 验证必需参数
     if (!slider || !applyFunction || !userDataKey) {
-        console.warn('SliderHelper: Missing required parameters');
+        logger.warn('SliderHelper: Missing required parameters');
         return;
     }
 

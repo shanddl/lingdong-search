@@ -627,39 +627,20 @@ body.light-mode .toggle-btn.disable:hover {
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    padding: 8px 6px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
+    padding: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 0;
     width: 100%;
     position: relative;
-    overflow: hidden;
-}
-
-.extension-item-grid::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(138, 180, 248, 0.1) 0%, transparent 100%);
-    opacity: 0;
-    transition: opacity 0.25s;
-}
-
-.extension-item-grid:hover::before {
-    opacity: 1;
+    overflow: visible;
 }
 
 .extension-item-grid:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent-color);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
 }
 
 .extension-item-grid.disabled {
@@ -670,15 +651,15 @@ body.light-mode .toggle-btn.disable:hover {
 .extension-grid-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: 8px;
     overflow: hidden;
-    background: var(--bg-secondary);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 4px var(--shadow);
+    box-shadow: none;
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid var(--border-color);
+    border: none;
 }
 
 .extension-item-grid:hover .extension-grid-icon {
@@ -723,7 +704,11 @@ body.light-mode .toggle-btn.disable:hover {
 }
 
 .extension-group-container.collapsed .group-container-content {
-    display: none !important;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    overflow: hidden;
+    border: none;
 }
 
 .group-container-header {
@@ -847,7 +832,9 @@ body.light-mode .group-header-left:hover {
     padding: 10px;
     min-height: 0;
     background: var(--bg-tertiary);
-    transition: background 0.3s ease;
+    transition: background 0.3s ease, max-height 0.4s ease-in-out, padding 0.4s ease-in-out;
+    max-height: 2000px;
+    overflow: hidden;
 }
 
 .group-container-content.extension-grid {

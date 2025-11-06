@@ -73,7 +73,7 @@ let unloadCleanupHandler = null;
                 window.state.userData = null;
             }
         } catch (error) {
-            console.warn('⚠️ 重置单例状态失败:', error);
+            logger.warn('重置单例状态失败:', error);
         }
     }
 })();
@@ -91,7 +91,7 @@ state.userData = { ...STATIC_CONFIG.DEFAULT_USER_DATA };
 function init() {
     // 【修复】防止重复初始化，避免刷新页面时资源累积
     if (isInitialized) {
-        console.warn('⚠️ 应用已初始化，跳过重复初始化。如需重新初始化，请先调用cleanup()');
+        logger.warn('应用已初始化，跳过重复初始化。如需重新初始化，请先调用cleanup()');
         return;
     }
     
@@ -748,7 +748,7 @@ function init() {
     
     // 【P0内存优化】页面卸载时清理所有全局资源（统一管理，只添加一次）
     unloadCleanupHandler = () => {
-        console.log('🧹 页面即将卸载，清理所有全局资源...');
+        logger.debug('页面即将卸载，清理所有全局资源...');
         try {
             // 清理所有定时器
             timerManager.clearAll();
@@ -783,7 +783,7 @@ function init() {
                     window.state.userData = null;
                 }
             } catch (e) {
-                console.warn('清理window.state失败:', e);
+                logger.warn('清理window.state失败:', e);
             }
             
             // 【修复】清理Chrome Storage监听器
@@ -793,19 +793,43 @@ function init() {
                         try {
                             listener.remove();
                         } catch (e) {
-                            console.warn('清理Chrome Storage监听器失败:', e);
+                            logger.warn('清理Chrome Storage监听器失败:', e);
                         }
                     });
                     window._chromeStorageListeners = [];
                 }
             } catch (e) {
-                console.warn('清理Chrome Storage监听器失败:', e);
+                logger.warn('清理Chrome Storage监听器失败:', e);
+            }
+            
+            // 【P0内存优化】清理所有Blob URL（防止内存泄漏）
+            try {
+                // 清理所有img元素中的Blob URL
+                const allImages = document.querySelectorAll('img[src^="blob:"]');
+                allImages.forEach(img => {
+                    try {
+                        if (img.src && img.src.startsWith('blob:')) {
+                            URL.revokeObjectURL(img.src);
+                            img.src = '';
+                        }
+                    } catch (e) {
+                        // 忽略已释放的URL错误
+                    }
+                });
+                
+                // 如果wallpaper-standalone.js的batchRevokeBlobUrls函数存在，调用它
+                // 【修复】batchRevokeBlobUrls是通过window.wallpaperPerf暴露的
+                if (window.wallpaperPerf && typeof window.wallpaperPerf.batchRevokeBlobUrls === 'function') {
+                    window.wallpaperPerf.batchRevokeBlobUrls();
+                }
+            } catch (e) {
+                logger.warn('清理Blob URL失败:', e);
             }
             
             // 【修复】重置初始化标记，允许下次重新初始化
             isInitialized = false;
         } catch (error) {
-            console.error('⚠️ 全局资源清理失败:', error);
+            logger.error('全局资源清理失败:', error);
         }
     };
     
@@ -823,7 +847,7 @@ function init() {
     // 【P0内存优化】页面隐藏时清理/暂停资源，可见时恢复
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            console.log('📱 页面已隐藏，执行轻量清理...');
+            logger.debug('页面已隐藏，执行轻量清理...');
             try {
                 // 清理所有定时器（保留活跃的，仅清理延迟执行的）
                 // timerManager.clearAll(); // 注释掉，避免清理活跃定时器
@@ -838,7 +862,7 @@ function init() {
                 //     // lazyLoader可能未初始化
                 // }
             } catch (error) {
-                console.warn('⚠️ 清理失败:', error);
+                logger.warn('清理失败:', error);
             }
         }
     });

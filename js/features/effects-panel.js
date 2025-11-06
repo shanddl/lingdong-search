@@ -8,6 +8,7 @@ import { timerManager } from '../utils/timerManager.js';
 import { eventManager } from '../eventManager.js';
 import { state } from '../state.js';
 import { core } from '../core.js';
+import { logger } from '../logger.js';
 
 /**
  * 滑块配置
@@ -271,6 +272,7 @@ class EffectsPanel {
         if (!this.settingsLoaded) {
             this.loadSliderValues();
             this.loadPanelTheme();
+            this.loadPanelPosition();
             this.loadActiveTab();
             this.settingsLoaded = true;
         }
@@ -423,7 +425,7 @@ class EffectsPanel {
             // 它们的监听器绑定在DOM元素上，只要元素不被移除，就不会累积
             // 但由于内存优化策略，我们在关闭时会移除这些监听器，所以需要重置标志以便重新绑定
         } catch (e) {
-            console.warn('[Effects Panel] Error removing event listeners:', e);
+            logger.warn('[Effects Panel] Error removing event listeners:', e);
         }
 
         // 3) 动画结束后（约300-500ms），清理重内容与预览引用（使用timerManager统一管理）
@@ -519,7 +521,7 @@ class EffectsPanel {
             try {
                 this.cleanupResize();
             } catch (e) {
-                console.warn('[Effects Panel] Error cleaning up old resize listeners:', e);
+                logger.warn('[Effects Panel] Error cleaning up old resize listeners:', e);
             }
         }
         
@@ -1084,7 +1086,7 @@ class EffectsPanel {
                 }).catch(error => {
                     // 如果是取消操作，不输出错误
                     if (abortController.signal.aborted) return;
-                    console.error('[Effects Panel] Failed to render scope-management:', error);
+                    logger.error('[Effects Panel] Failed to render scope-management:', error);
                     this._renderedAccordions.delete(accordionType);
                     this._pendingRenders.delete(accordionType);
                 });
@@ -1106,7 +1108,7 @@ class EffectsPanel {
                     this._pendingRenders.delete(accordionType);
                 }).catch(error => {
                     if (abortController.signal.aborted) return;
-                    console.error('[Effects Panel] Failed to render engine-management:', error);
+                    logger.error('[Effects Panel] Failed to render engine-management:', error);
                     this._renderedAccordions.delete(accordionType);
                     this._pendingRenders.delete(accordionType);
                 });
@@ -1123,7 +1125,7 @@ class EffectsPanel {
                     this._pendingRenders.delete(accordionType);
                 }).catch(error => {
                     if (abortController.signal.aborted) return;
-                    console.error('[Effects Panel] Failed to render ai-management:', error);
+                    logger.error('[Effects Panel] Failed to render ai-management:', error);
                     this._renderedAccordions.delete(accordionType);
                     this._pendingRenders.delete(accordionType);
                 });
@@ -1140,7 +1142,7 @@ class EffectsPanel {
                     this._pendingRenders.delete(accordionType);
                 }).catch(error => {
                     if (abortController.signal.aborted) return;
-                    console.error('[Effects Panel] Failed to render nav-group-management:', error);
+                    logger.error('[Effects Panel] Failed to render nav-group-management:', error);
                     this._renderedAccordions.delete(accordionType);
                     this._pendingRenders.delete(accordionType);
                 });
@@ -1154,7 +1156,7 @@ class EffectsPanel {
                             // 【P0内存优化】标记为已渲染
                             this._renderedAccordions.add(accordionType);
                         }).catch(error => {
-                            console.error('[Effects Panel] Failed to update version info:', error);
+                            logger.error('[Effects Panel] Failed to update version info:', error);
                             // 即使失败也标记为已渲染，避免重复尝试
                             this._renderedAccordions.add(accordionType);
                         });
@@ -1163,7 +1165,7 @@ class EffectsPanel {
                         this._renderedAccordions.add(accordionType);
                     }
                 } catch (error) {
-                    console.error('[Effects Panel] Failed to update version info:', error);
+                    logger.error('[Effects Panel] Failed to update version info:', error);
                     // 即使失败也标记为已渲染，避免重复尝试
                     this._renderedAccordions.add(accordionType);
                 }
@@ -1172,7 +1174,6 @@ class EffectsPanel {
             case 'quick-actions':
             case 'search':
             case 'icons':
-            case 'panel-settings':
             case 'data-management':
                 // 静态内容，不需要动态渲染，直接标记为已渲染
                 this._renderedAccordions.add(accordionType);
@@ -1180,7 +1181,7 @@ class EffectsPanel {
                 break;
             default:
                 // 未知的 accordion 类型，不进行渲染
-                console.warn(`[Effects Panel] Unknown accordion type: ${accordionType}`);
+                logger.warn(`[Effects Panel] Unknown accordion type: ${accordionType}`);
                 break;
         }
     }
@@ -1358,7 +1359,7 @@ class EffectsPanel {
         obj[keys[keys.length - 1]] = value;
         core.saveUserData((error) => {
             if (error) {
-                console.error('Failed to save slider value:', path, error);
+                logger.error('Failed to save slider value:', path, error);
                 // 滑块值保存失败，静默处理（已有防抖机制）
             }
         });
@@ -1461,9 +1462,11 @@ class EffectsPanel {
      * 加载保存的面板位置
      */
     loadPanelPosition() {
-        const savedPosition = localStorage.getItem('panel-position');
+        const savedPosition = localStorage.getItem('panel-position') || 'right';
         if (savedPosition === 'left') {
             this.panel.classList.add('panel-left');
+        } else {
+            this.panel.classList.remove('panel-left');
         }
         // 更新按钮状态会在打开面板时处理
     }
@@ -1521,7 +1524,7 @@ class EffectsPanel {
             if (navAlign) this.setNavAlignment(navAlign);
             if (navShape) this.setNavShape(navShape);
         } catch (error) {
-            console.error('应用关键样式失败:', error);
+            logger.error('应用关键样式失败:', error);
         }
     }
     
@@ -1561,7 +1564,7 @@ class EffectsPanel {
                 }
             });
         } catch (error) {
-            console.error('应用保存的CSS变量失败:', error);
+            logger.error('应用保存的CSS变量失败:', error);
         }
     }
     
@@ -1584,7 +1587,7 @@ class EffectsPanel {
                 this.loadSliderValue(config);
             });
         } catch (error) {
-            console.error('加载滑块值失败:', error);
+            logger.error('加载滑块值失败:', error);
         }
     }
     

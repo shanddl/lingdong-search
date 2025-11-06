@@ -734,7 +734,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         // 移除冗余的初始化调用（已在handleNavClick中按需加载）
-        // initializeDefaultSolidColors();  // ❌ 冗余：默认activeSource='qihu360'，不需要预加载
         
         // 加载最近使用的颜色
         loadRecentColors();
@@ -1363,8 +1362,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         if (farAway && img.src) {
                             // 超过2屏距离的图片可以卸载
-                            // img.src = '';
-                            // img.classList.remove('loaded');
                             // 注释：暂时不卸载，保持体验流畅
                         }
                     }

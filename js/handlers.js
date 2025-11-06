@@ -920,7 +920,6 @@ async function testIconSourcesCommon(urlInputId, iconSourcesListId, iconSourcesC
         );
     } catch (importError) {
         logger.error('导入iconHelper模块失败:', importError);
-        console.error('[ERROR] 导入iconHelper模块失败:', importError);
         throw importError;
     }
 }
@@ -1043,15 +1042,14 @@ const actionHandlers = {
     },
     
     // Settings actions
-    'sync-settings': () => {
-        core.saveUserData(err => {
-        });
-    },
     'import-settings': () => {
         const input = document.createElement('input');
-        input.type = 'file'; input.accept = '.json';
+        input.type = 'file'; 
+        input.accept = '.json';
         input.onchange = e => {
-            const file = e.target.files[0]; if (!file) return;
+            const file = e.target.files[0]; 
+            if (!file) return;
+            
             const reader = new FileReader();
             reader.onload = (event) => {
                 try {
@@ -1068,20 +1066,100 @@ const actionHandlers = {
                         });
                     }
                     
+                    // 使用与 loadUserData 相同的合并策略，确保数据一致性
+                    const defaultData = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA));
+                    
+                    // 先进行基础合并（与 loadUserData 保持一致）
+                    const mergedData = {
+                        ...defaultData,
+                        ...importedData,
+                        // 深度合并导航组，确保用户创建的分类不会丢失
+                        navigationGroups: importedData.navigationGroups || [...defaultData.navigationGroups],
+                        // 深度合并动态过滤器
+                        dynamicFilters: { 
+                            ...defaultData.dynamicFilters, 
+                            ...(importedData.dynamicFilters || {})
+                        }
+                    };
+                    
+                    // 验证和修复动态过滤器（与 loadUserData 保持一致）
+                    if (!mergedData.dynamicFilters || !mergedData.dynamicFilters.timeRange || 
+                        mergedData.dynamicFilters.timeRange.some(r => typeof r === 'object' && r.hasOwnProperty('value'))) {
+                        mergedData.dynamicFilters = defaultData.dynamicFilters;
+                    }
+                    
+                    // 验证搜索引擎（与 loadUserData 保持一致）
+                    if (!mergedData.searchEngines || !Array.isArray(mergedData.searchEngines) || mergedData.searchEngines.length === 0) {
+                        mergedData.searchEngines = [...defaultData.searchEngines];
+                    }
+                    
+                    // 确保活跃搜索引擎存在（与 loadUserData 保持一致）
+                    if (mergedData.searchEngines && mergedData.searchEngines.length > 0) {
+                        const activeEngineExists = mergedData.searchEngines.some(e => e && e.id === mergedData.activeSearchEngineId);
+                        if (!activeEngineExists) {
+                            mergedData.activeSearchEngineId = mergedData.searchEngines[0].id;
+                        }
+                    } else {
+                        // 极端情况：searchEngines为空，重置为默认值
+                        mergedData.searchEngines = [...defaultData.searchEngines];
+                        mergedData.activeSearchEngineId = defaultData.searchEngines[0].id;
+                    }
+                    
+                    // 验证导航组（与 loadUserData 保持一致）
+                    if (!mergedData.navigationGroups || !Array.isArray(mergedData.navigationGroups) || mergedData.navigationGroups.length === 0) {
+                        mergedData.navigationGroups = [...defaultData.navigationGroups];
+                        mergedData.activeNavigationGroupId = defaultData.activeNavigationGroupId;
+                    } else {
+                        // 验证活跃导航组ID
+                        const activeGroupExists = mergedData.navigationGroups.some(g => g && g.id === mergedData.activeNavigationGroupId);
+                        if (!activeGroupExists) {
+                            mergedData.activeNavigationGroupId = mergedData.navigationGroups[0].id;
+                        }
+                    }
+                    
+                    // 验证引擎设置（与 loadUserData 保持一致）
+                    if (!mergedData.engineSettings || typeof mergedData.engineSettings !== 'object') {
+                        mergedData.engineSettings = defaultData.engineSettings ? { ...defaultData.engineSettings } : { size: 16, spacing: 8 };
+                    } else {
+                        // 确保 size 和 spacing 字段存在
+                        if (typeof mergedData.engineSettings.size !== 'number') {
+                            mergedData.engineSettings.size = 16;
+                        }
+                        if (typeof mergedData.engineSettings.spacing !== 'number') {
+                            mergedData.engineSettings.spacing = 8;
+                        }
+                    }
+                    
+                    // AI数据迁移：为旧版本的AI数据添加websiteUrl字段（与 loadUserData 保持一致）
+                    if (mergedData.aiSettings && Array.isArray(mergedData.aiSettings)) {
+                        mergedData.aiSettings = mergedData.aiSettings.map(ai => {
+                            if (!ai.websiteUrl && ai.url) {
+                                // 如果没有websiteUrl，使用url作为websiteUrl
+                                ai.websiteUrl = ai.url.replace('{query}', '');
+                            }
+                            return ai;
+                        });
+                    }
+                    
                     // 使用安全的确认对话框
                     domSafe.showConfirm(
                         '您确定要导入设置吗？\n当前设置将被覆盖。',
                         () => {
-                            state.userData = { ...STATIC_CONFIG.DEFAULT_USER_DATA, ...importedData };
+                            state.userData = mergedData;
                             core.saveUserData(err => {
-                                if (err) return;
+                                if (err) {
+                                    domSafe.showAlert('导入失败：保存数据时出错。', 'error');
+                                    return;
+                                }
                                 core.loadUserData(); // Reload all settings and UI
+                                domSafe.showAlert('导入成功！', 'success');
                             });
                         }
                     );
                 } catch (err) { 
                     // 使用安全的错误提示对话框
-                    domSafe.showAlert('导入失败：文件无法解析。', 'error');
+                    logger.error('导入失败:', err);
+                    domSafe.showAlert('导入失败：文件无法解析。请确保文件格式正确。', 'error');
                 }
             };
             reader.readAsText(file);
@@ -1263,7 +1341,6 @@ const actionHandlers = {
     'test-icon-sources': async () => {
         // AI设置的图标源测试
         logger.debug('test-icon-sources handler 被调用');
-        console.log('[DEBUG] test-icon-sources handler 开始执行');
         try {
             const urlInput = document.getElementById('ai-search-url');
             logger.debug('AI搜索URL输入框:', { 
@@ -1272,17 +1349,15 @@ const actionHandlers = {
                 trimmed: urlInput?.value?.trim()
             });
             await testIconSourcesCommon('ai-search-url', 'icon-sources-list', 'icon-sources-content', 'ai-icon-url', 'ai-icon-preview');
-            console.log('[DEBUG] test-icon-sources handler 执行完成');
+            logger.debug('test-icon-sources handler 执行完成');
         } catch (error) {
             logger.error('test-icon-sources 执行失败:', error);
-            console.error('[ERROR] test-icon-sources 执行失败:', error);
         }
     },
     
     'test-engine-icon-sources': async () => {
         // 搜索引擎的图标源测试（使用iconSourceTester）
         logger.debug('test-engine-icon-sources handler 被调用');
-        console.log('[DEBUG] test-engine-icon-sources handler 开始执行');
         const engineUrl = document.getElementById('engine-url');
         
         if (!engineUrl || !engineUrl.value.trim()) {
@@ -1319,7 +1394,6 @@ const actionHandlers = {
                 );
             } catch (importError) {
                 logger.error('导入iconHelper模块失败:', importError);
-                console.error('[ERROR] 导入iconHelper模块失败:', importError);
                 throw importError;
             }
         } catch (error) {
@@ -1345,8 +1419,6 @@ const actionHandlers = {
                     );
                 } catch (importError) {
                     logger.error('导入iconHelper模块失败:', importError);
-                    console.error('[ERROR] 导入iconHelper模块失败:', importError);
-                    // 已移除提示
                     throw importError;
                 }
             } catch (retryError) {
@@ -1358,7 +1430,6 @@ const actionHandlers = {
     'test-scope-icon-sources': async () => {
         // 搜索范围的图标源测试 - 使用sites字段来获取图标（使用iconSourceTester）
         logger.debug('test-scope-icon-sources handler 被调用');
-        console.log('[DEBUG] test-scope-icon-sources handler 开始执行');
         const scopeSitesInput = document.getElementById('scope-editor-sites');
         if (!scopeSitesInput || !scopeSitesInput.value.trim()) {
             return;
@@ -1389,7 +1460,6 @@ const actionHandlers = {
             );
         } catch (importError) {
             logger.error('导入iconHelper模块失败:', importError);
-            console.error('[ERROR] 导入iconHelper模块失败:', importError);
             throw importError;
         }
     },
@@ -1669,7 +1739,7 @@ export function handleActionClick(e) {
         className: target.className, 
         tagName: target.tagName 
     });
-    console.log('[DEBUG] handleActionClick 被调用', { action, targetId: target.id });
+    logger.debug('handleActionClick 被调用', { action, targetId: target.id });
     
     // 对于按钮类型的元素，阻止表单提交（如果是button且在form中）
     if (target.tagName === 'BUTTON' && target.closest('form')) {
@@ -1719,10 +1789,8 @@ export function handleActionClick(e) {
                 } else if (isAsyncAction) {
                     // 异步handler，需要await处理
                     logger.debug(`执行异步action: ${action}`);
-                    console.log(`[DEBUG] 执行异步action: ${action}`);
                     handler().catch(error => {
-                        logger.error(`Error in async action handler "${action}":`, error);
-                        console.error(`[ERROR] 异步action handler "${action}" 执行失败:`, error);
+                        logger.error(`异步action handler "${action}" 执行失败:`, error);
                     });
                 } else if (handler.length > 1) {
                     // handler需要多个参数（包括event）

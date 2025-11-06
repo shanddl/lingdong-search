@@ -266,7 +266,7 @@ export const syncUI = {
                 modal.remove();
                 await syncManager.init();
                 await syncManager.fullSync();
-('✓ ' + (isLogin ? '登录成功' : '注册成功'), 'success');
+                NotificationService.showToast('✓ ' + (isLogin ? '登录成功' : '注册成功'), 'success');
                 this.updateSyncStatus();
             } else {
                 // 显示错误
@@ -422,7 +422,7 @@ export const syncUI = {
      * 测试 Supabase 连接
      */
     async testSupabaseConnection() {
-('正在测试连接...', 'info');
+        NotificationService.showToast('正在测试连接...', 'info');
         
         try {
             // 从 apiClient 获取配置
@@ -445,23 +445,23 @@ export const syncUI = {
             
             if (restResponse.ok && authResponse.ok) {
                 message += '🎉 Supabase 连接正常！\n可以正常使用同步功能。';
-('✅ 连接测试成功', 'success');
+                NotificationService.showToast('✅ 连接测试成功', 'success');
             } else {
                 message += '⚠️ 连接存在问题。\n\n可能原因：\n1. 代理未生效\n2. 项目已暂停\n3. 网络限制';
-('❌ 连接测试失败', 'error');
+                NotificationService.showToast('❌ 连接测试失败', 'error');
             }
             
             alert(message);
             
             // 在控制台输出详细信息
-            console.log('[连接测试] REST API 状态:', restResponse.status, restResponse.statusText);
-            console.log('[连接测试] Auth API 状态:', authResponse.status, authResponse.statusText);
+            log.debug('[连接测试] REST API 状态:', restResponse.status, restResponse.statusText);
+            log.debug('[连接测试] Auth API 状态:', authResponse.status, authResponse.statusText);
             
         } catch (error) {
             const message = `❌ 连接测试失败\n\n错误：${error.message}\n\n请检查：\n1. 代理是否正常工作\n2. Supabase 项目是否可访问\n3. 浏览器控制台的详细错误`;
             alert(message);
-('❌ 连接失败: ' + error.message, 'error');
-            console.error('[连接测试] 错误:', error);
+            NotificationService.showToast('❌ 连接失败: ' + error.message, 'error');
+            log.error('[连接测试] 错误:', error);
         }
     },
 
@@ -469,13 +469,13 @@ export const syncUI = {
      * 手动同步
      */
     async manualSync() {
-('开始同步...', 'info');
+        NotificationService.showToast('开始同步...', 'info');
         const result = await syncManager.pushToCloud(state.userData);
         
         if (result.success) {
-('✓ 同步成功', 'success');
+            NotificationService.showToast('✓ 同步成功', 'success');
         } else {
-('✗ 同步失败: ' + result.error, 'error');
+            NotificationService.showToast('✗ 同步失败: ' + result.error, 'error');
         }
         
         this.updateSyncStatus();
@@ -489,7 +489,7 @@ export const syncUI = {
             await authManager.logout();
             syncManager.stopAutoSync();
             this.stopStatusInterval();
-('已登出', 'info');
+            NotificationService.showToast('已登出', 'info');
             this.updateSyncStatus();
         }
     },
@@ -502,9 +502,9 @@ export const syncUI = {
             const result = await syncManager.deleteCloudData();
             
             if (result.success) {
-('✓ 云端数据已删除', 'success');
+                NotificationService.showToast('✓ 云端数据已删除', 'success');
             } else {
-('✗ 删除失败: ' + result.error, 'error');
+                NotificationService.showToast('✗ 删除失败: ' + result.error, 'error');
             }
         }
     },

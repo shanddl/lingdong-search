@@ -297,9 +297,9 @@ import { sanitizer } from './js/security.js';
                 } else if (tabName === 'extensions') {
                     dom.addNavContent.classList.add('hidden');
                     dom.extensionsContent.classList.remove('hidden');
-                    // 扩展管理标签页：宽宽度
-                    document.body.style.width = '480px';
-                    document.body.style.maxWidth = '480px';
+                    // 扩展管理标签页：宽宽度（参考HTML文件，增加到700px避免滚动条）
+                    document.body.style.width = '700px';
+                    document.body.style.maxWidth = '700px';
                     // 切换到扩展管理时加载扩展列表
                     loadExtensions();
                 }

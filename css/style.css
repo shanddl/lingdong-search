@@ -35,6 +35,17 @@
     /* --- Dock栏缩放变量 --- */
     --dock-scale: 1;
     /* --- Navigation Customization Variables End --- */
+
+    /* --- 壁纸库变量 --- */
+    --wallpaper-bg-dark: #202225;
+    --wallpaper-sidebar-bg: #2f3136;
+    --wallpaper-content-bg: #36393f;
+    --wallpaper-accent-blue: #5865f2;
+    --wallpaper-text-primary: #dcddde;
+    --wallpaper-text-muted: #b9bbbe;
+    --wallpaper-border-color: #40444b;
+    --wallpaper-hover-color: #3a3d42;
+    --wallpaper-modal-overlay: rgba(0, 0, 0, 0.8);
 }
 
 @keyframes slideOutLeft {
@@ -3428,7 +3439,7 @@ body.panel-resizing * {
     height: 850px;
     display: flex;
     z-index: 10000;
-    background: #1f272f;
+    background: var(--wallpaper-content-bg);
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     overflow: hidden;
@@ -3474,9 +3485,9 @@ body.panel-resizing * {
 
 /* 左侧导航栏 */
 .wallpaper-library-sidebar {
-    width: 160px; /* 【优化】稍微增加宽度，更协调 */
-    background: #1f272f;
-    border-right: 1px solid #3c4043;
+    width: 220px;
+    background: var(--wallpaper-sidebar-bg);
+    border-right: 1px solid var(--wallpaper-border-color);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
@@ -3485,59 +3496,52 @@ body.panel-resizing * {
 }
 
 .wallpaper-library-title {
-    padding: 24px 16px 20px 16px; /* 【优化】增加左右padding，与内容区对齐 */
-    font-size: 16px;
-    font-weight: 600;
-    color: #e0e0e0;
-    border-bottom: 1px solid #3c4043;
-    margin-bottom: 0; /* 【优化】移除底部margin，使用nav的padding */
+    padding: 20px 10px;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    border-bottom: 1px solid var(--wallpaper-border-color);
+    margin-bottom: 0;
 }
 
 .wallpaper-library-nav {
     display: flex;
     flex-direction: column;
-    padding: 12px 0; /* 【优化】增加上下padding，更对称 */
+    padding: 0;
+}
+
+.wallpaper-library-nav ul {
+    list-style: none;
 }
 
 .wallpaper-nav-item {
-    position: relative;
-    padding: 14px 16px; /* 【优化】统一左右padding，与标题对齐 */
-    margin: 0 8px; /* 【优化】增加左右margin，更优雅 */
-    border-radius: 8px; /* 【优化】添加圆角 */
+    width: 100%;
+    padding: 12px 15px;
     background: transparent;
     border: none;
-    color: #e0e0e0;
-    font-size: 13px;
+    color: var(--wallpaper-text-muted);
+    font-size: 16px;
     text-align: left;
     cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-}
-
-/* 激活指示条 */
-.wallpaper-nav-item.active::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: #8ab4f8;
-    border-radius: 0 2px 2px 0;
+    border-radius: 5px;
+    margin-bottom: 5px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    display: block;
 }
 
 .wallpaper-nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background-color: var(--wallpaper-hover-color);
+    color: #fff;
 }
 
 .wallpaper-nav-item.active {
-    background: rgba(138, 180, 248, 0.1);
-    color: #8ab4f8;
+    background-color: var(--wallpaper-accent-blue);
+    color: #fff;
+    font-weight: 500;
 }
 
 .wallpaper-nav-item span {
-    flex: 1;
+    display: block;
 }
 
 /* 右侧主内容区 */
@@ -3546,43 +3550,42 @@ body.panel-resizing * {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: #1f272f;
-    min-height: 0; /* 确保flex子元素可以正确计算高度 */
-    height: 100%; /* 确保有明确的高度 */
+    background: var(--wallpaper-content-bg);
+    min-height: 0;
+    height: 100%;
 }
 
 /* 子导航栏（360分类、必应日期等） */
 .wallpaper-subnav {
     display: flex;
     align-items: center;
-    gap: 12px; /* 【优化】稍微增加间距 */
-    padding: 20px 32px; /* 【优化】增加上下padding，更对称 */
-    border-bottom: 1px solid #3c4043;
-    background: rgba(42, 52, 63, 0.3);
+    gap: 10px;
+    padding: 20px 30px;
+    border-bottom: 1px solid var(--wallpaper-border-color);
+    background: transparent;
     flex-wrap: wrap;
 }
 
 .wallpaper-subnav-btn {
-    padding: 8px 16px; /* 【优化】增加padding，更协调 */
-    border: 1px solid #3c4043;
-    border-radius: 16px;
-    background: transparent;
-    color: #a0a0a0;
-    font-size: 13px;
+    padding: 8px 16px;
+    border: 1px solid var(--wallpaper-border-color);
+    border-radius: 20px;
+    background: var(--wallpaper-sidebar-bg);
+    color: var(--wallpaper-text-muted);
+    font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-weight: 500; /* 【优化】增加字重，更清晰 */
+    transition: background-color 0.2s, color 0.2s;
 }
 
 .wallpaper-subnav-btn:hover {
-    background: #2a343f;
-    color: #e0e0e0;
+    background-color: var(--wallpaper-hover-color);
+    color: #fff;
 }
 
 .wallpaper-subnav-btn.active {
-    background: rgba(138, 180, 248, 0.1);
-    border-color: #8ab4f8;
-    color: #8ab4f8;
+    background-color: var(--wallpaper-accent-blue);
+    color: #fff;
+    border-color: var(--wallpaper-accent-blue);
 }
 
 /* 搜索框 */
@@ -3590,50 +3593,40 @@ body.panel-resizing * {
     display: flex;
     align-items: center;
     margin-left: auto;
-    background: #2a343f;
-    border: 1px solid #3c4043;
-    border-radius: 20px;
-    padding: 8px 16px; /* 【优化】增加padding，与按钮更协调 */
-    min-width: 220px; /* 【优化】稍微增加最小宽度 */
-    transition: all 0.2s ease;
-}
-
-.wallpaper-search-box:focus-within {
-    border-color: #8ab4f8;
-    box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.2);
+    background: var(--wallpaper-sidebar-bg);
+    padding: 5px 10px;
+    border-radius: 5px;
 }
 
 .wallpaper-search-input {
     flex: 1;
     border: none;
-    background: transparent;
-    color: #e0e0e0;
-    font-size: 14px;
+    background: none;
     outline: none;
-    padding: 0;
+    color: var(--wallpaper-text-primary);
+    width: 250px;
+    font-size: 14px;
 }
 
 .wallpaper-search-input::placeholder {
-    color: #a0a0a0;
+    color: var(--wallpaper-text-muted);
 }
 
 .wallpaper-search-btn {
     background: none;
     border: none;
-    color: #a0a0a0;
+    color: var(--wallpaper-text-muted);
     cursor: pointer;
     padding: 4px;
     margin-left: 8px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: color 0.2s;
 }
 
 .wallpaper-search-btn:hover {
-    color: #8ab4f8;
-    background: rgba(138, 180, 248, 0.1);
+    color: var(--wallpaper-text-primary);
 }
 
 .wallpaper-search-btn svg {
@@ -3643,14 +3636,14 @@ body.panel-resizing * {
 
 /* 自定义壁纸上传区域 */
 .wallpaper-upload-area {
-    padding: 28px 32px; /* 【优化】统一上下padding，与内容区对称 */
-    border-bottom: 1px solid #3c4043;
+    padding: 28px 32px;
+    border-bottom: 1px solid var(--wallpaper-border-color);
 }
 
 .wallpaper-upload-dropzone {
-    border: 2px dashed #3c4043;
+    border: 2px dashed var(--wallpaper-border-color);
     border-radius: 12px;
-    padding: 48px 32px; /* 【优化】统一padding，更对称 */
+    padding: 48px 32px;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -3658,13 +3651,13 @@ body.panel-resizing * {
 }
 
 .wallpaper-upload-dropzone:hover {
-    border-color: #8ab4f8;
-    background: rgba(138, 180, 248, 0.1);
+    border-color: var(--wallpaper-accent-blue);
+    background: rgba(88, 101, 242, 0.1);
 }
 
 .wallpaper-upload-dropzone.drag-over {
-    border-color: #8ab4f8;
-    background: rgba(138, 180, 248, 0.15);
+    border-color: var(--wallpaper-accent-blue);
+    background: rgba(88, 101, 242, 0.15);
     transform: scale(1.02);
 }
 
@@ -3672,15 +3665,15 @@ body.panel-resizing * {
     width: 48px;
     height: 48px;
     margin: 0 auto 16px;
-    color: #a0a0a0;
+    color: var(--wallpaper-text-muted);
 }
 
 .wallpaper-upload-dropzone:hover .wallpaper-upload-icon {
-    color: #8ab4f8;
+    color: var(--wallpaper-accent-blue);
 }
 
 .wallpaper-upload-text {
-    color: #e0e0e0;
+    color: var(--wallpaper-text-primary);
     font-size: 14px;
 }
 
@@ -3689,117 +3682,110 @@ body.panel-resizing * {
 }
 
 .wallpaper-upload-link {
-    color: #8ab4f8;
+    color: var(--wallpaper-accent-blue);
     text-decoration: underline;
     cursor: pointer;
 }
 
 .wallpaper-upload-hint {
     font-size: 12px;
-    color: #a0a0a0;
+    color: var(--wallpaper-text-muted);
 }
 
 /* 壁纸网格容器 */
 .wallpaper-content-main {
     flex: 1;
-    overflow-y: hidden; /* 【优化】隐藏滚动条，使用分页而非滚动 */
+    overflow-y: auto;
     overflow-x: hidden;
-    padding: 28px 32px; /* 【优化】增加上下padding，与子导航栏对称 */
-    min-height: 0; /* 确保flex子元素可以正确计算高度 */
-    /* 确保所有内容都能显示 */
-    max-height: none;
+    padding: 5px 10px 5px 5px;
+    min-height: 0;
+}
+
+.wallpaper-content-main::-webkit-scrollbar {
+    width: 8px;
+}
+
+.wallpaper-content-main::-webkit-scrollbar-track {
+    background: var(--wallpaper-sidebar-bg);
+    border-radius: 4px;
+}
+
+.wallpaper-content-main::-webkit-scrollbar-thumb {
+    background: var(--wallpaper-border-color);
+    border-radius: 4px;
 }
 
 /* 分页控件 */
 .wallpaper-pagination {
     display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 12px; /* 【优化】稍微减少间距，更紧凑 */
-    padding: 20px 32px; /* 【优化】增加上下padding，与子导航栏对称 */
-    border-top: 1px solid #3c4043;
-    background: rgba(42, 52, 63, 0.3);
+    align-items: center;
+    padding-top: 20px;
     flex-shrink: 0;
 }
 
-.wallpaper-page-btn {
-    min-width: 36px;
-    height: 36px;
-    padding: 0 12px;
-    border: 1px solid #3c4043;
-    border-radius: 8px;
-    background: transparent;
-    color: #a0a0a0;
-    cursor: pointer;
+.wallpaper-page-numbers {
     display: flex;
-    align-items: center;
+    gap: 8px;
+}
+
+.wallpaper-page-link {
+    display: flex;
     justify-content: center;
-    transition: all 0.2s ease;
-    font-size: 14px;
+    align-items: center;
+    width: 36px;
+    height: 36px;
+    text-decoration: none;
+    color: var(--wallpaper-text-muted);
+    background-color: var(--wallpaper-sidebar-bg);
+    border-radius: 5px;
+    transition: background-color 0.2s, color 0.2s;
 }
 
-/* 激活状态的页码按钮 */
-.wallpaper-page-btn.active,
-.wallpaper-page-btn[style*="background: #8ab4f8"] {
-    background: #8ab4f8 !important;
-    border-color: #8ab4f8 !important;
-    color: #fff !important;
+.wallpaper-page-link:hover {
+    background-color: var(--wallpaper-accent-blue);
+    color: #fff;
 }
 
-.wallpaper-page-btn:hover:not(:disabled) {
-    background: #2a343f;
-    border-color: #8ab4f8;
-    color: #8ab4f8;
-}
-
-.wallpaper-page-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.wallpaper-page-btn svg {
-    width: 20px;
-    height: 20px;
+.wallpaper-page-link.active {
+    background-color: var(--wallpaper-accent-blue);
+    color: #fff;
+    font-weight: 500;
 }
 
 .wallpaper-page-info {
-    display: flex;
-    align-items: center;
-    gap: 6px; /* 【优化】稍微减少间距，更紧凑 */
-    color: #e0e0e0;
+    margin-left: 20px;
     font-size: 14px;
-    min-width: 90px; /* 【优化】稍微增加宽度，更平衡 */
-    justify-content: center;
-    font-weight: 500; /* 【优化】增加字重，更清晰 */
+    color: var(--wallpaper-text-muted);
 }
 
 .wallpaper-page-separator {
-    color: #a0a0a0;
+    margin: 0 4px;
 }
 
 .wallpaper-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px; /* 【优化】增加网格间距，更均匀协调 */
-    min-height: min-content; /* 确保网格至少能显示内容 */
+    gap: 20px;
+    min-height: min-content;
     width: 100%;
-    /* 确保网格可以完整显示所有内容 */
     grid-auto-rows: auto;
 }
 
 .wallpaper-item {
     aspect-ratio: 16 / 10;
-    border-radius: 12px;
+    border-radius: 8px;
     overflow: hidden;
-    background: #2a343f;
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     position: relative;
+    background: var(--wallpaper-sidebar-bg);
 }
 
 .wallpaper-item:hover {
-    transform: scale(1.03);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    z-index: 10;
 }
 
 .wallpaper-item img {
@@ -3809,12 +3795,7 @@ body.panel-resizing * {
     display: block;
     opacity: 0;
     transition: opacity 0.3s ease;
-    background-color: #2a343f; /* 占位背景色，避免闪烁 */
-}
-
-/* 图片未加载时显示占位背景 */
-.wallpaper-item img:not([src]) {
-    background: linear-gradient(135deg, #2a343f 0%, #1f272f 100%);
+    background-color: var(--wallpaper-sidebar-bg);
 }
 
 .wallpaper-item img.loaded {
@@ -3830,7 +3811,7 @@ body.panel-resizing * {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    color: #e0e0e0;
+    color: var(--wallpaper-text-primary);
     font-size: 16px;
     font-weight: 500;
     z-index: 2;
@@ -3895,42 +3876,24 @@ body.panel-resizing * {
     background: rgba(255, 255, 255, 0.6) !important;
 }
 
-/* 【优化】右侧内容区完全隐藏滚动条 */
-.wallpaper-content-main::-webkit-scrollbar {
-    width: 0 !important;
-    display: none !important;
-    height: 0 !important;
-}
-
-.wallpaper-content-main::-webkit-scrollbar-track {
-    display: none !important;
-}
-
-.wallpaper-content-main::-webkit-scrollbar-thumb {
-    display: none !important;
-}
-
 /* Firefox滚动条样式 */
 .wallpaper-library-sidebar {
-    scrollbar-width: thin !important; /* Firefox - 左侧保留 */
-    scrollbar-color: rgba(255, 255, 255, 0.4) rgba(0, 0, 0, 0.2) !important;
-}
-
-/* 【优化】右侧内容区隐藏滚动条（Firefox） */
-.wallpaper-content-main {
-    scrollbar-width: none !important; /* Firefox - 右侧隐藏 */
-    -ms-overflow-style: none !important; /* IE/Edge */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.4) rgba(0, 0, 0, 0.2);
 }
 
 /* 窗口内全屏预览 */
 .wallpaper-fullscreen-view {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.95);
-    z-index: 10002;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--wallpaper-modal-overlay);
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+    z-index: 10002;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -3941,17 +3904,49 @@ body.panel-resizing * {
     visibility: visible;
 }
 
-.wallpaper-fullscreen-img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    cursor: pointer;
+.wallpaper-fullscreen-content {
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+    transform: scale(0.9);
     transition: transform 0.3s ease;
-    transform: scale(0.95);
 }
 
-.wallpaper-fullscreen-view.visible .wallpaper-fullscreen-img {
+.wallpaper-fullscreen-view.visible .wallpaper-fullscreen-content {
     transform: scale(1);
+}
+
+.wallpaper-fullscreen-img {
+    max-width: 100%;
+    max-height: 90vh;
+    display: block;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.wallpaper-fullscreen-close-btn {
+    position: absolute;
+    top: -15px;
+    right: -15px;
+    width: 35px;
+    height: 35px;
+    background-color: #fff;
+    color: #000;
+    border: none;
+    border-radius: 50%;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.wallpaper-fullscreen-close-btn:hover {
+    transform: scale(1.1);
 }
 
 .wallpaper-fullscreen-controls {

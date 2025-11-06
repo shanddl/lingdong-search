@@ -598,7 +598,7 @@ export const render = {
         const manageScopesTabs = document.getElementById('manage-scopes-tabs');
         const manageScopesList = document.getElementById('manage-scopes-list');
         if (!manageScopesTabs || !manageScopesList) {
-            console.error('[Render] Scopes elements not found');
+            logger.error('[Render] Scopes elements not found');
             return;
         }
         // 更新dom引用
@@ -727,8 +727,7 @@ export const render = {
     engineManagementModal: () => {
         const engineList = document.getElementById('engine-list');
         if (!engineList) {
-            console.error('[Render] Engine list element not found');
-            logger.error('Engine list element not found');
+            logger.error('[Render] Engine list element not found');
             return;
         }
         // 更新dom引用以使用实时获取的元素

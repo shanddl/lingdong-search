@@ -13,6 +13,7 @@ import { DOMHelper } from '../utils/domHelper.js';
 import { ButtonGroupHelper } from '../utils/buttonGroupHelper.js';
 import { iconSourceTester } from '../utils/iconHelper.js';
 import { timerManager } from '../utils/timerManager.js';
+import { NotificationService } from '../utils/notificationService.js';
 
 // 存储导航模块的事件监听器ID
 const navigationEventIds = [];
@@ -273,10 +274,6 @@ export const navigationModule = {
             groupGroup.appendChild(groupLabel);
             groupGroup.appendChild(groupSelect);
             
-            // 组装表单主体（注意：之前已经添加过了，这里不需要再添加）
-            // body.appendChild(nameGroup);
-            // body.appendChild(urlGroup);
-            // body.appendChild(iconGroup);
             body.appendChild(previewGroup);
             body.appendChild(groupGroup);
             
@@ -1021,9 +1018,9 @@ export const navigationModule = {
                         updateNavigationGroupsMap(); // 更新缓存
                         core.saveUserData((error) => {
                             if (error) {
-('删除失败: ' + error.message, 'error');
+                                NotificationService.showToast('删除失败: ' + error.message, 'error');
                             } else {
-('删除成功', 'success');
+                                NotificationService.showToast('删除成功', 'success');
                                 navigationModule.render.grid();
                             }
                         });
@@ -1066,10 +1063,10 @@ export const navigationModule = {
                 updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData((error) => {
                     if (error) {
-('保存失败: ' + error.message, 'error');
+                            NotificationService.showToast('保存失败: ' + error.message, 'error');
                         
                     } else {
-('保存成功', 'success');
+                            NotificationService.showToast('保存成功', 'success');
                         navigationModule.render.all();
                     }
                 });
@@ -1410,7 +1407,7 @@ export const navigationModule = {
                 group.name = newName.trim();
                 updateNavigationGroupsMap(); // 更新缓存
                 core.saveUserData(() => {
-('重命名成功', 'success');
+                        NotificationService.showToast('重命名成功', 'success');
                     navigationModule.render.tabs();
                 });
             }
@@ -1433,7 +1430,7 @@ export const navigationModule = {
                         state.activeNavigationGroupId = state.userData.navigationGroups[0]?.id || null;
                     }
                     core.saveUserData(() => {
-('删除成功', 'success');
+                                NotificationService.showToast('删除成功', 'success');
                         navigationModule.render.all();
                         // 检查侧边面板的导航组管理手风琴是否展开
                         const navGroupAccordion = document.querySelector('[data-accordion="nav-group-management"]');
@@ -1477,10 +1474,10 @@ export const navigationModule = {
             updateNavigationGroupsMap(); // 更新缓存
             core.saveUserData((error) => {
                 if (error) {
-('保存失败: ' + error.message, 'error');
+                            NotificationService.showToast('保存失败: ' + error.message, 'error');
                     
                 } else {
-('分类已保存', 'success');
+                        NotificationService.showToast('分类已保存', 'success');
                     navigationModule.render.all();
                     navigationModule.render.groupManagementModal();
                     navigationModule.handlers.onCancelGroupEdit();

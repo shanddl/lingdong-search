@@ -3,6 +3,7 @@ import { utils } from '../utils.js';
 import { searchModule } from './search.js';
 import { logger } from '../logger.js';
 import { timerManager } from '../utils/timerManager.js';
+import { NotificationService } from '../utils/notificationService.js';
 // modalManager 和 dom 已不再需要，AI设置已迁移到侧边面板
 
 // =================================================================
@@ -48,8 +49,7 @@ export const aiSettings = {
     renderAIList() {
         const aiList = document.getElementById('ai-list');
         if (!aiList) {
-            console.error('[AI Settings] AI list element not found');
-            logger.error('AI list element not found');
+            logger.error('[AI Settings] AI list element not found');
             return;
         }
 
@@ -267,15 +267,15 @@ export const aiSettings = {
                     logger.debug('Update callback received:', { error, updated });
                     if (error) {
                         logger.error('Update error:', error);
-('更新失败: ' + error.message, 'error');
+            NotificationService.showToast('更新失败: ' + error.message, 'error');
                     } else if (updated) {
                         logger.debug('Update successful, updating UI');
                         this.renderAIList();
                         this.resetForm();
-('AI已更新', 'success');
+            NotificationService.showToast('AI已更新', 'success');
                     } else {
                         logger.debug('Update failed: no result');
-('更新失败', 'error');
+            NotificationService.showToast('更新失败', 'error');
                     }
                 });
             } else {
@@ -285,21 +285,21 @@ export const aiSettings = {
                     logger.debug('Add callback received:', { error, newAI });
                     if (error) {
                         logger.error('Add error:', error);
-('添加失败: ' + error.message, 'error');
+            NotificationService.showToast('添加失败: ' + error.message, 'error');
                     } else if (newAI) {
                         logger.debug('Add successful, updating UI');
                         this.renderAIList();
                         this.resetForm();
-('AI已添加', 'success');
+            NotificationService.showToast('AI已添加', 'success');
                     } else {
                         logger.debug('Add failed: no result');
-('添加失败', 'error');
+            NotificationService.showToast('添加失败', 'error');
                     }
                 });
             }
         } catch (error) {
             logger.error('Save error:', error);
-('保存失败: ' + error.message, 'error');
+            NotificationService.showToast('保存失败: ' + error.message, 'error');
         }
     },
 
@@ -323,14 +323,14 @@ export const aiSettings = {
         const iconSourcesContent = document.getElementById('icon-sources-content');
         
         if (!urlInput.value) {
-('请先输入AI搜索网址', 'error');
+            NotificationService.showToast('请先输入AI搜索网址', 'error');
             return;
         }
 
         try {
             const sources = aiManager.getIconSources(urlInput.value);
             if (sources.length === 0) {
-('无法获取图标源', 'error');
+            NotificationService.showToast('无法获取图标源', 'error');
                 return;
             }
 
@@ -362,11 +362,11 @@ export const aiSettings = {
             
             // 显示图标源列表
             iconSourcesList.style.display = 'block';
-(`找到 ${sources.length} 个图标源`, 'success');
+            NotificationService.showToast(`找到 ${sources.length} 个图标源`, 'success');
             
         } catch (error) {
-            console.error('测试图标源失败:', error);
-('测试图标源失败: ' + error.message, 'error');
+            logger.error('测试图标源失败:', error);
+            NotificationService.showToast('测试图标源失败: ' + error.message, 'error');
         }
     },
 

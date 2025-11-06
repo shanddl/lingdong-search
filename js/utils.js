@@ -127,8 +127,11 @@ export const utils = {
         // 添加普通选项到滚动区域
         regularOptions.forEach(opt => {
             if (opt.type === 'divider') {
-                 scrollableArea.innerHTML += `<div class="context-menu-divider"></div>`;
-                 return;
+                // 【安全修复】使用createElement替代innerHTML，避免XSS风险
+                const divider = document.createElement('div');
+                divider.className = 'context-menu-divider';
+                scrollableArea.appendChild(divider);
+                return;
             }
             const item = document.createElement('div');
             item.className = 'dropdown-item';

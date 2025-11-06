@@ -23,6 +23,7 @@ class WallpaperLibraryPanel {
         this.closeBtn = document.getElementById('wallpaper-close-btn');
         this.fullscreenView = document.getElementById('wallpaper-fullscreen-view');
         this.fullscreenImg = document.getElementById('wallpaper-fullscreen-img');
+        this.fullscreenCloseBtn = document.getElementById('wallpaper-fullscreen-close-btn');
         this.setBgBtn = document.getElementById('wallpaper-set-bg-btn');
         this.downloadBtn = document.getElementById('wallpaper-download-btn');
         this.grid = document.getElementById('wallpaper-library-grid');
@@ -35,10 +36,6 @@ class WallpaperLibraryPanel {
         this.uploadDropzone = document.getElementById('wallpaper-upload-dropzone');
         this.fileInput = document.getElementById('wallpaper-file-input');
         this.pagination = document.getElementById('wallpaper-pagination');
-        this.pagePrevBtn = document.getElementById('wallpaper-page-prev');
-        this.pageNextBtn = document.getElementById('wallpaper-page-next');
-        this.pageCurrent = document.getElementById('wallpaper-page-current');
-        this.pageTotal = document.getElementById('wallpaper-page-total');
         
         if (!this.panel) {
             log.error('壁纸库面板元素未找到');
@@ -53,6 +50,8 @@ class WallpaperLibraryPanel {
         this.bingDaysRange = 7; // 必应历史默认显示最近7天
         this.qihu360SearchKeyword = ''; // 360壁纸搜索关键词
         this.ITEMS_PER_PAGE = 24;
+        this.OFFICIAL_ITEMS_PER_PAGE = 9; // 官方壁纸固定显示3行（3列×3行）
+        this.BING_ITEMS_PER_PAGE = 9; // 必应壁纸固定显示3行（3列×3行）
         this.MY_UPLOADS_KEY = 'my_uploaded_wallpapers';
         this.totalPages = 1; // 总页数
         this.totalItems = 0; // 总数量
@@ -475,13 +474,22 @@ class WallpaperLibraryPanel {
 
         // 全屏预览相关
         if (this.fullscreenView && this.fullscreenImg) {
-            // 点击背景或图片关闭预览
+            // 关闭按钮
+            if (this.fullscreenCloseBtn) {
+                this.fullscreenCloseBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.closeFullscreen();
+                });
+            }
+
+            // 点击背景关闭预览
             this.fullscreenView.addEventListener('click', (e) => {
-                if (!e.target.closest('.wallpaper-fullscreen-controls')) {
+                if (e.target === this.fullscreenView) {
                     this.closeFullscreen();
                 }
             });
 
+            // 点击图片关闭预览
             this.fullscreenImg.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.closeFullscreen();
@@ -587,6 +595,17 @@ class WallpaperLibraryPanel {
         if (this.subnav360) this.subnav360.style.display = 'none';
         if (this.subnavBing) this.subnavBing.style.display = 'none';
         if (this.uploadArea) this.uploadArea.style.display = 'none';
+
+        // 恢复滚动设置（切换源时）
+        const contentMain = document.querySelector('.wallpaper-content-main');
+        if (contentMain) {
+            contentMain.style.overflow = 'auto';
+            contentMain.style.height = '';
+        }
+        if (this.grid) {
+            this.grid.style.maxHeight = '';
+            this.grid.style.overflow = '';
+        }
 
         // 根据源显示对应的子导航或上传区域
         if (source === 'qihu360' || source === 'official') {
@@ -734,14 +753,23 @@ class WallpaperLibraryPanel {
             let isMyUploads = false;
             
             switch (source) {
-                case 'bing':
+                case 'bing': // 必应壁纸固定显示3行
+                    // 临时保存原始ITEMS_PER_PAGE
+                    const bingOriginalItemsPerPage = this.ITEMS_PER_PAGE;
+                    // 必应壁纸使用9张每页（3列×3行）
+                    this.ITEMS_PER_PAGE = this.BING_ITEMS_PER_PAGE;
                     images = await this.fetchBingHistory();
+                    // 恢复原始ITEMS_PER_PAGE
+                    this.ITEMS_PER_PAGE = bingOriginalItemsPerPage;
+                    // 必应壁纸固定显示9张（3列×3行），确保不超出
+                    if (images.length > this.BING_ITEMS_PER_PAGE) {
+                        images = images.slice(0, this.BING_ITEMS_PER_PAGE);
+                    }
                     // 计算总页数（每天1张，最多加载到日期范围内的所有壁纸）
                     this.totalItems = this.bingDaysRange;
-                    this.totalPages = Math.max(1, Math.ceil(this.totalItems / this.ITEMS_PER_PAGE));
+                    this.totalPages = Math.max(1, Math.ceil(this.totalItems / this.BING_ITEMS_PER_PAGE));
                     break;
                 case 'qihu360':
-                case 'official': // 官方壁纸使用360壁纸
                     images = await this.fetch360Wallpapers();
                     // 360壁纸通常有很多页，假设至少有100页（可以根据实际情况调整）
                     // 如果没有返回数据，说明可能是最后一页
@@ -754,6 +782,23 @@ class WallpaperLibraryPanel {
                     // 360壁纸页数较多，动态显示更多页数（至少显示20页）
                     // 如果当前页小于10，显示到第20页；否则显示当前页+10页
                     this.totalPages = Math.max(20, this.currentPage + 10);
+                    break;
+                case 'official': // 官方壁纸使用360壁纸，但固定显示3行
+                    // 临时保存原始ITEMS_PER_PAGE
+                    const originalItemsPerPage = this.ITEMS_PER_PAGE;
+                    // 官方壁纸使用9张每页（3列×3行）
+                    this.ITEMS_PER_PAGE = this.OFFICIAL_ITEMS_PER_PAGE;
+                    images = await this.fetch360Wallpapers();
+                    // 恢复原始ITEMS_PER_PAGE
+                    this.ITEMS_PER_PAGE = originalItemsPerPage;
+                    // 官方壁纸固定显示9张（3列×3行），确保不超出
+                    if (images.length > this.OFFICIAL_ITEMS_PER_PAGE) {
+                        images = images.slice(0, this.OFFICIAL_ITEMS_PER_PAGE);
+                    }
+                    // 官方壁纸总页数：假设有足够的数据，显示合理的页数
+                    // 由于无法准确获取总数，使用一个合理的估算值
+                    this.totalPages = Math.max(20, this.currentPage + 10);
+                    this.totalItems = this.totalPages * this.OFFICIAL_ITEMS_PER_PAGE;
                     break;
                 case 'myuploads':
                     images = await this.getMyUploadedImages();
@@ -788,8 +833,46 @@ class WallpaperLibraryPanel {
                 return;
             }
             
+            // 官方壁纸和必应壁纸特殊处理：限制渲染数量为9张（3行），确保完整显示3行不缺失不冗余
+            if (source === 'official') {
+                if (images.length > this.OFFICIAL_ITEMS_PER_PAGE) {
+                    images = images.slice(0, this.OFFICIAL_ITEMS_PER_PAGE);
+                } else if (images.length < this.OFFICIAL_ITEMS_PER_PAGE && this.currentPage > 1) {
+                    // 如果当前页数据不足9张，可能是最后一页，不需要补全
+                    log.debug(`官方壁纸当前页数据不足: ${images.length} < ${this.OFFICIAL_ITEMS_PER_PAGE}`);
+                }
+            } else if (source === 'bing') {
+                if (images.length > this.BING_ITEMS_PER_PAGE) {
+                    images = images.slice(0, this.BING_ITEMS_PER_PAGE);
+                } else if (images.length < this.BING_ITEMS_PER_PAGE && this.currentPage > 1) {
+                    // 如果当前页数据不足9张，可能是最后一页，不需要补全
+                    log.debug(`必应壁纸当前页数据不足: ${images.length} < ${this.BING_ITEMS_PER_PAGE}`);
+                }
+            }
+            
             this.renderWallpapers(images, isMyUploads, false);
             this.updatePagination();
+            
+            // 官方壁纸和必应壁纸：禁用滚动，确保只显示3行，不缺失不冗余
+            if (source === 'official' || source === 'bing') {
+                const contentMain = document.querySelector('.wallpaper-content-main');
+                if (contentMain) {
+                    contentMain.style.overflow = 'hidden';
+                    contentMain.style.height = 'auto';
+                }
+                // 确保网格只显示3行
+                if (this.grid) {
+                    this.grid.style.maxHeight = 'none';
+                    this.grid.style.overflow = 'visible';
+                }
+            } else {
+                // 其他来源恢复滚动
+                const contentMain = document.querySelector('.wallpaper-content-main');
+                if (contentMain) {
+                    contentMain.style.overflow = 'auto';
+                    contentMain.style.height = '';
+                }
+            }
             
         } catch (error) {
             log.error(`加载 ${source} 壁纸失败:`, error);
@@ -801,7 +884,7 @@ class WallpaperLibraryPanel {
     }
 
     /**
-     * 更新分页控件（显示10个页码，超出用箭头）
+     * 更新分页控件（参考ai_studio_code.html的设计）
      */
     updatePagination() {
         if (!this.pagination) return;
@@ -812,26 +895,42 @@ class WallpaperLibraryPanel {
             return;
         }
         
-        // 显示分页控件（包括纯色壁纸）
+        // 显示分页控件
         this.pagination.style.display = 'flex';
         
-        // 调试日志
-        log.debug(`updatePagination: source=${this.activeSource}, currentPage=${this.currentPage}, totalPages=${this.totalPages}, totalItems=${this.totalItems}`);
+        log.debug(`updatePagination: source=${this.activeSource}, currentPage=${this.currentPage}, totalPages=${this.totalPages}`);
         
-        // 清空现有内容（除了左右箭头按钮）
-        const prevBtn = this.pagePrevBtn;
-        const nextBtn = this.pageNextBtn;
-        const currentSpan = this.pageCurrent;
-        const totalSpan = this.pageTotal;
+        // 获取或创建页码容器
+        let pageNumbers = document.getElementById('wallpaper-page-numbers');
+        if (!pageNumbers) {
+            pageNumbers = document.createElement('div');
+            pageNumbers.className = 'wallpaper-page-numbers';
+            pageNumbers.id = 'wallpaper-page-numbers';
+            this.pagination.insertBefore(pageNumbers, this.pagination.querySelector('.wallpaper-page-info'));
+        }
         
-        // 保存左右箭头
-        this.pagination.innerHTML = '';
+        // 清空页码容器
+        pageNumbers.innerHTML = '';
         
-        const maxVisiblePages = 20; // 增加到20个页码
+        // 更新页码信息
+        const pageInfo = this.pagination.querySelector('.wallpaper-page-info');
+        if (pageInfo) {
+            const currentSpan = pageInfo.querySelector('#wallpaper-page-current');
+            const totalSpan = pageInfo.querySelector('#wallpaper-page-total');
+            if (currentSpan) currentSpan.textContent = this.currentPage;
+            if (totalSpan) totalSpan.textContent = this.totalPages > 0 ? this.totalPages : '-';
+        }
+        
+        // 如果没有总页数，不显示页码
+        if (!this.totalPages || this.totalPages <= 0) {
+            return;
+        }
+        
+        // 计算显示的页码范围（最多显示15个页码）
+        const maxVisiblePages = 15;
         let startPage = 1;
         let endPage = this.totalPages;
         
-        // 计算显示的页面范围
         if (this.totalPages > maxVisiblePages) {
             const half = Math.floor(maxVisiblePages / 2);
             if (this.currentPage <= half) {
@@ -846,124 +945,25 @@ class WallpaperLibraryPanel {
             }
         }
         
-        // 跳转到第一页按钮（双左箭头）
-        const firstPageBtn = document.createElement('button');
-        firstPageBtn.className = 'wallpaper-page-btn';
-        firstPageBtn.id = 'wallpaper-page-first';
-        firstPageBtn.disabled = this.currentPage <= 1;
-        firstPageBtn.title = '第一页';
-        firstPageBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.41 16.59L13.82 12l4.59-4.59L17 6l-6 6 6 6zM6 6h2v12H6z"/></svg>';
-        firstPageBtn.addEventListener('click', () => {
-            if (this.currentPage > 1) {
-                this.currentPage = 1;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                // 【优化】已隐藏滚动条，无需重置scrollTop
-            }
-        });
-        this.pagination.appendChild(firstPageBtn);
-        
-        // 左箭头（上一页）
-        const leftArrow = document.createElement('button');
-        leftArrow.className = 'wallpaper-page-btn';
-        leftArrow.id = 'wallpaper-page-prev';
-        leftArrow.disabled = this.currentPage <= 1;
-        leftArrow.title = '上一页';
-        leftArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>';
-        leftArrow.addEventListener('click', () => {
-            if (this.currentPage > 1) {
-                this.currentPage--;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                // 【优化】已隐藏滚动条，无需重置scrollTop
-            }
-        });
-        this.pagination.appendChild(leftArrow);
-        this.pagePrevBtn = leftArrow;
-        
-        // 页码按钮
+        // 创建页码链接
         for (let i = startPage; i <= endPage; i++) {
-            const pageBtn = document.createElement('button');
-            pageBtn.className = 'wallpaper-page-btn';
-            pageBtn.style.cssText = 'min-width: 36px; padding: 0 12px;';
+            const pageLink = document.createElement('a');
+            pageLink.href = '#';
+            pageLink.className = 'wallpaper-page-link';
             if (i === this.currentPage) {
-                pageBtn.style.background = '#8ab4f8';
-                pageBtn.style.borderColor = '#8ab4f8';
-                pageBtn.style.color = '#fff';
+                pageLink.classList.add('active');
             }
-            pageBtn.textContent = i;
-            pageBtn.addEventListener('click', () => {
-                this.currentPage = i;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                // 【优化】已隐藏滚动条，无需重置scrollTop
+            pageLink.textContent = i;
+            pageLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (this.currentPage !== i) {
+                    this.currentPage = i;
+                    this.grid.innerHTML = '';
+                    this.loadWallpapers(this.activeSource);
+                }
             });
-            this.pagination.appendChild(pageBtn);
+            pageNumbers.appendChild(pageLink);
         }
-        
-        // 页码信息
-        const pageInfo = document.createElement('div');
-        pageInfo.className = 'wallpaper-page-info';
-        pageInfo.innerHTML = `
-            <span id="wallpaper-page-current">${this.currentPage}</span>
-            <span class="wallpaper-page-separator">/</span>
-            <span id="wallpaper-page-total">${this.totalPages > 0 ? this.totalPages : '-'}</span>
-        `;
-        this.pagination.appendChild(pageInfo);
-        this.pageCurrent = pageInfo.querySelector('#wallpaper-page-current');
-        this.pageTotal = pageInfo.querySelector('#wallpaper-page-total');
-        
-        // 右箭头（下一页）
-        const rightArrow = document.createElement('button');
-        rightArrow.className = 'wallpaper-page-btn';
-        rightArrow.id = 'wallpaper-page-next';
-        if (this.activeSource === 'qihu360' || this.activeSource === 'official') {
-            // 360壁纸可以继续尝试加载
-            rightArrow.disabled = false;
-        } else {
-            rightArrow.disabled = this.currentPage >= this.totalPages;
-        }
-        rightArrow.title = '下一页';
-        rightArrow.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>';
-        rightArrow.addEventListener('click', () => {
-            if (this.activeSource === 'qihu360' || this.activeSource === 'official') {
-                // 360壁纸可以继续尝试
-                this.currentPage++;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                // 【优化】已隐藏滚动条，无需重置scrollTop
-            } else if (this.currentPage < this.totalPages) {
-                this.currentPage++;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                // 【优化】已隐藏滚动条，无需重置scrollTop
-            }
-        });
-        this.pagination.appendChild(rightArrow);
-        this.pageNextBtn = rightArrow;
-        
-        // 跳转到最后一页按钮（双右箭头）
-        const lastPageBtn = document.createElement('button');
-        lastPageBtn.className = 'wallpaper-page-btn';
-        lastPageBtn.id = 'wallpaper-page-last';
-        if (this.activeSource === 'qihu360' || this.activeSource === 'official') {
-            // 360壁纸禁用跳转最后一页（因为不知道总页数）
-            lastPageBtn.disabled = true;
-        } else {
-            lastPageBtn.disabled = this.currentPage >= this.totalPages;
-        }
-        lastPageBtn.title = '最后一页';
-        lastPageBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.59 7.41L10.18 12l-4.59 4.59L7 18l6-6-6-6zM16 6h2v12h-2z"/></svg>';
-        lastPageBtn.addEventListener('click', () => {
-            if (this.currentPage < this.totalPages) {
-                this.currentPage = this.totalPages;
-                this.grid.innerHTML = '';
-                this.loadWallpapers(this.activeSource);
-                const contentMain = document.querySelector('.wallpaper-content-main');
-                if (contentMain) contentMain.scrollTop = 0;
-            }
-        });
-        this.pagination.appendChild(lastPageBtn);
     }
 
     /**
