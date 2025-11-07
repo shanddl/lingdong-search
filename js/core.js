@@ -31,7 +31,7 @@ function simpleHash(str) {
 
 // 保存操作的防抖机制，防止并发saveUserData调用导致数据覆盖（使用timerManager统一管理）
 let pendingCallbacks = [];
-const SAVE_DEBOUNCE_DELAY = 800; // 800ms防抖延迟（优化性能，减少频繁I/O和内存占用）
+const SAVE_DEBOUNCE_DELAY = 300; // 【修复】减少防抖延迟从800ms到300ms，加快保存速度
 let lastSavedDataHash = null; // 上次保存的数据哈希，用于检测变化
 
 /**
@@ -59,11 +59,13 @@ export const core = {
             // 修复数据合并逻辑 - 确保分类数据正确保留
             if (storedData) {
                 const defaultData = getDefaultData();
+                // 【关键修复】直接使用storedData.navigationGroups，不要用默认值覆盖
                 // 深度合并导航组数据，确保用户创建的分类不会丢失
                 state.userData = {
                     ...defaultData,
                     ...storedData,
-                    navigationGroups: storedData.navigationGroups || [...defaultData.navigationGroups],
+                    // 【关键修复】确保使用存储的navigationGroups，保持items顺序
+                    navigationGroups: storedData.navigationGroups ? [...storedData.navigationGroups] : [...defaultData.navigationGroups],
                     dynamicFilters: { 
                         ...defaultData.dynamicFilters, 
                         ...(storedData.dynamicFilters || {})
@@ -106,6 +108,13 @@ export const core = {
                     state.userData.activeNavigationGroupId = getDefaultData().activeNavigationGroupId;
                     log.warn('Navigation groups was empty, reset to defaults');
                 } else {
+                    // 【关键修复】验证每个group的items数组，确保顺序保持
+                    state.userData.navigationGroups.forEach((group) => {
+                        if (!group.items || !Array.isArray(group.items)) {
+                            group.items = [];
+                        }
+                    });
+                    
                     // 验证活跃导航组ID
                     const activeGroupExists = state.userData.navigationGroups.some(g => g && g.id === state.userData.activeNavigationGroupId);
                     if (!activeGroupExists) {
@@ -175,151 +184,212 @@ export const core = {
      * - 数据未变化时跳过保存，避免不必要的I/O操作
      * - 性能监控：记录保存时间和数据大小
      * @param {Function} callback - 保存完成后的回调函数，参数为error
+     * @param {Object} options - 保存选项 { immediate: boolean } - immediate为true时立即保存，不防抖
      */
-    saveUserData: (callback) => {
+    saveUserData: (callback, options = {}) => {
+        const { immediate = false } = options;
+        
         // 收集callback
         if (callback) {
             pendingCallbacks.push(callback);
         }
         
+        // 如果要求立即保存，直接执行保存逻辑
+        if (immediate) {
+            // 立即执行保存，但先清空防抖队列
+            timerManager.clearTimeout('saveUserData');
+            const callbacks = [...pendingCallbacks];
+            pendingCallbacks = [];
+            
+            // 【关键修复】立即保存时，强制重置哈希，确保数据变化能被检测到
+            // 因为立即保存通常用于关键操作（如拖拽排序），需要确保保存
+            log.debug('Immediate save requested, forcing save execution');
+            
+            // 直接执行保存逻辑（复用下面的代码）
+            // 注意：_executeSave内部会进行哈希检测，但立即保存时我们希望强制保存
+            core._executeSave(callbacks, true); // 传入force参数
+            return;
+        }
+        
         // 使用timerManager统一管理防抖定时器，避免内存泄漏
         timerManager.clearTimeout('saveUserData');
         
-        // 设置新的定时器
+        // 设置新的定时器（减少防抖延迟从800ms到300ms，加快保存速度）
         timerManager.setTimeout('saveUserData', () => {
-            // activeNavigationGroupId 通过 Proxy 自动同步，无需手动操作
-            
             // 保存当前的callbacks列表
             const callbacks = [...pendingCallbacks];
             pendingCallbacks = [];
             
-            // 运行时数据验证：在保存前检查数据完整性
-            try {
-                // 验证searchEngines数组（仅在需要恢复时才深拷贝部分数据）
-                if (!Array.isArray(state.userData.searchEngines) || state.userData.searchEngines.length === 0) {
-                    log.warn('Invalid searchEngines detected, restoring defaults');
-                    const defaultEngines = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.searchEngines));
-                    state.userData.searchEngines = defaultEngines;
-                    state.userData.activeSearchEngineId = defaultEngines[0].id;
-                }
-                
-                // 验证navigationGroups数组（仅在需要恢复时才深拷贝部分数据）
-                if (!Array.isArray(state.userData.navigationGroups) || state.userData.navigationGroups.length === 0) {
-                    log.warn('Invalid navigationGroups detected, restoring defaults');
-                    const defaultGroups = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.navigationGroups));
-                    const defaultActiveId = STATIC_CONFIG.DEFAULT_USER_DATA.activeNavigationGroupId;
-                    state.userData.navigationGroups = defaultGroups;
-                    state.userData.activeNavigationGroupId = defaultActiveId;
-                }
-                
-                // 验证engineSettings对象
-                if (!state.userData.engineSettings || typeof state.userData.engineSettings !== 'object') {
-                    log.warn('Invalid engineSettings detected, using defaults');
-                    state.userData.engineSettings = { size: 16, spacing: 8 };
-                } else {
-                    if (typeof state.userData.engineSettings.size !== 'number' || state.userData.engineSettings.size < 10 || state.userData.engineSettings.size > 32) {
-                        log.warn('Invalid engineSettings.size, resetting to 16');
-                        state.userData.engineSettings.size = 16;
-                    }
-                    if (typeof state.userData.engineSettings.spacing !== 'number' || state.userData.engineSettings.spacing < 0 || state.userData.engineSettings.spacing > 20) {
-                        log.warn('Invalid engineSettings.spacing, resetting to 8');
-                        state.userData.engineSettings.spacing = 8;
-                    }
-                }
-            } catch (validationError) {
-                log.error('Data validation error:', validationError);
+            // 执行保存逻辑
+            core._executeSave(callbacks);
+        }, 300); // 【修复】减少防抖延迟从800ms到300ms
+    },
+    
+    /**
+     * 内部方法：执行实际的保存操作
+     * @private
+     * @param {Array<Function>} callbacks - 回调函数数组
+     * @param {boolean} force - 是否强制保存（忽略哈希检测）
+     */
+    _executeSave: (callbacks, force = false) => {
+        // activeNavigationGroupId 通过 Proxy 自动同步，无需手动操作
+        
+        // 运行时数据验证：在保存前检查数据完整性
+        try {
+            // 验证searchEngines数组（仅在需要恢复时才深拷贝部分数据）
+            if (!Array.isArray(state.userData.searchEngines) || state.userData.searchEngines.length === 0) {
+                log.warn('Invalid searchEngines detected, restoring defaults');
+                const defaultEngines = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.searchEngines));
+                state.userData.searchEngines = defaultEngines;
+                state.userData.activeSearchEngineId = defaultEngines[0].id;
             }
             
-            // 【P0内存优化】数据变化检测 - 使用增量序列化避免全量JSON.stringify占用大量内存
-            // 仅序列化关键变化字段进行哈希比较，而非整个对象
-            let currentHash;
-            try {
-                // 优化：只序列化可能变化的字段，减少内存占用
-                const keyFields = {
-                    navigationGroups: state.userData.navigationGroups,
-                    searchEngines: state.userData.searchEngines,
-                    activeNavigationGroupId: state.userData.activeNavigationGroupId,
-                    activeSearchEngineId: state.userData.activeSearchEngineId,
-                    engineSettings: state.userData.engineSettings,
-                    searchboxTop: state.userData.searchboxTop,
-                    searchboxWidth: state.userData.searchboxWidth,
-                    navigationShape: state.userData.navigationShape,
-                    navigationAlignment: state.userData.navigationAlignment
+            // 验证navigationGroups数组（仅在需要恢复时才深拷贝部分数据）
+            if (!Array.isArray(state.userData.navigationGroups) || state.userData.navigationGroups.length === 0) {
+                log.warn('Invalid navigationGroups detected, restoring defaults');
+                const defaultGroups = JSON.parse(JSON.stringify(STATIC_CONFIG.DEFAULT_USER_DATA.navigationGroups));
+                const defaultActiveId = STATIC_CONFIG.DEFAULT_USER_DATA.activeNavigationGroupId;
+                state.userData.navigationGroups = defaultGroups;
+                state.userData.activeNavigationGroupId = defaultActiveId;
+            }
+            
+            // 验证engineSettings对象
+            if (!state.userData.engineSettings || typeof state.userData.engineSettings !== 'object') {
+                log.warn('Invalid engineSettings detected, using defaults');
+                state.userData.engineSettings = { size: 16, spacing: 8 };
+            } else {
+                if (typeof state.userData.engineSettings.size !== 'number' || state.userData.engineSettings.size < 10 || state.userData.engineSettings.size > 32) {
+                    log.warn('Invalid engineSettings.size, resetting to 16');
+                    state.userData.engineSettings.size = 16;
+                }
+                if (typeof state.userData.engineSettings.spacing !== 'number' || state.userData.engineSettings.spacing < 0 || state.userData.engineSettings.spacing > 20) {
+                    log.warn('Invalid engineSettings.spacing, resetting to 8');
+                    state.userData.engineSettings.spacing = 8;
+                }
+            }
+        } catch (validationError) {
+            log.error('Data validation error:', validationError);
+        }
+        
+        // 【修复】数据变化检测 - 确保包含navigationGroups.items的完整顺序
+        // 使用增量序列化避免全量JSON.stringify占用大量内存
+        let currentHash;
+        try {
+            // 【关键修复】确保navigationGroups包含完整的items数组顺序
+            // 序列化每个group的items数组的id顺序，确保能检测到排序变化
+            const navigationGroupsForHash = state.userData.navigationGroups?.map(group => {
+                // 【修复】确保items数组存在且正确序列化
+                const items = group.items || [];
+                return {
+                    id: group.id,
+                    name: group.name,
+                    // 【关键修复】包含items的完整顺序（通过id数组表示）
+                    // 使用slice()确保是新的数组引用，避免引用问题
+                    itemsOrder: items.map(item => item?.id).filter(id => id !== undefined)
                 };
-                const keyFieldsStr = JSON.stringify(keyFields);
-                currentHash = simpleHash(keyFieldsStr);
-            } catch (hashError) {
-                // 降级：如果增量序列化失败，使用全量（但应该很少发生）
-                log.warn('Incremental hash failed, using full hash:', hashError);
-                const dataStr = JSON.stringify(state.userData);
-                currentHash = simpleHash(dataStr);
-            }
+            }) || [];
             
-            if (lastSavedDataHash === currentHash) {
-                log.debug('Data unchanged, skipping save');
-                // 数据未变化，直接调用callbacks（返回成功）
-                callbacks.forEach(cb => {
-                    try {
-                        cb(null);
-                    } catch (e) {
-                        log.error('Callback error in saveUserData:', e);
-                    }
-                });
-                return;
-            }
+            // 优化：只序列化可能变化的字段，减少内存占用
+            const keyFields = {
+                navigationGroups: navigationGroupsForHash, // 【修复】使用包含items顺序的版本
+                searchEngines: state.userData.searchEngines,
+                activeNavigationGroupId: state.userData.activeNavigationGroupId,
+                activeSearchEngineId: state.userData.activeSearchEngineId,
+                engineSettings: state.userData.engineSettings,
+                searchboxTop: state.userData.searchboxTop,
+                searchboxWidth: state.userData.searchboxWidth,
+                navigationShape: state.userData.navigationShape,
+                navigationAlignment: state.userData.navigationAlignment
+            };
+            const keyFieldsStr = JSON.stringify(keyFields);
+            currentHash = simpleHash(keyFieldsStr);
             
-            // 【P0内存优化】延迟序列化 - 只在确认需要保存时才序列化完整数据
-            // 避免在防抖期间重复序列化占用内存
-            let dataStr;
-            let dataSize = 0;
-            try {
-                dataStr = JSON.stringify(state.userData);
-                dataSize = dataStr.length;
-                
-                // [性能监控] 检测数据大小
-                if (dataSize > 1024 * 1024) { // 大于1MB
-                    log.warn('User data size is large:', Math.round(dataSize / 1024), 'KB');
-                }
-            } catch (stringifyError) {
-                log.error('Failed to stringify user data:', stringifyError);
-                // 序列化失败，调用callbacks返回错误
-                callbacks.forEach(cb => {
-                    try {
-                        cb(stringifyError);
-                    } catch (e) {
-                        log.error('Callback error in saveUserData:', e);
-                    }
-                });
-                return;
-            }
-            
-            // 执行实际的保存操作
-            const saveStartTime = performance.now();
-            // 【修复】storage.set内部会再次序列化，所以传递原始对象即可
-            // dataStr在这里已经不再需要，可以立即释放
-            const dataToSave = state.userData;
-            // 注意：不在这里释放dataStr，因为它可能在某些错误场景下还需要
-            // 但可以在storage.set调用后立即释放（通过作用域自然释放）
-            
-            storage.set(dataToSave, (error) => {
-                if (!error) {
-                    lastSavedDataHash = currentHash; // 保存成功，更新哈希
-                    const saveTime = Math.round(performance.now() - saveStartTime);
-                    if (saveTime > 100) {
-                        log.warn('Slow save operation:', saveTime, 'ms');
-                    }
-                }
-                
-                // 依次调用所有pending的callbacks
-                callbacks.forEach(cb => {
-                    try {
-                        cb(error);
-                    } catch (e) {
-                        log.error('Callback error in saveUserData:', e);
-                    }
-                });
+            // 【调试】记录哈希计算详情
+            log.debug('Hash calculation:', {
+                hash: currentHash,
+                lastHash: lastSavedDataHash,
+                navigationGroups: navigationGroupsForHash.map(g => ({
+                    id: g.id,
+                    itemsOrder: g.itemsOrder
+                }))
             });
-        }, SAVE_DEBOUNCE_DELAY);
+        } catch (hashError) {
+            // 降级：如果增量序列化失败，使用全量（但应该很少发生）
+            log.warn('Incremental hash failed, using full hash:', hashError);
+            const dataStr = JSON.stringify(state.userData);
+            currentHash = simpleHash(dataStr);
+        }
+        
+        // 【关键修复】立即保存时强制保存，跳过哈希检测
+        if (!force && lastSavedDataHash === currentHash) {
+            log.debug('Data unchanged, skipping save');
+            // 数据未变化，直接调用callbacks（返回成功）
+            callbacks.forEach(cb => {
+                try {
+                    cb(null);
+                } catch (e) {
+                    log.error('Callback error in saveUserData:', e);
+                }
+            });
+            return;
+        }
+        
+        if (force) {
+            log.debug('Force save: ignoring hash check');
+        }
+        
+        // 【P0内存优化】延迟序列化 - 只在确认需要保存时才序列化完整数据
+        // 避免在防抖期间重复序列化占用内存
+        let dataStr;
+        let dataSize = 0;
+        try {
+            // 【优化】序列化数据（已移除冗余的验证日志，保留关键日志）
+            dataStr = JSON.stringify(state.userData);
+            dataSize = dataStr.length;
+            
+            // [性能监控] 检测数据大小
+            if (dataSize > 1024 * 1024) { // 大于1MB
+                log.warn('User data size is large:', Math.round(dataSize / 1024), 'KB');
+            }
+        } catch (stringifyError) {
+            log.error('Failed to stringify user data:', stringifyError);
+            // 序列化失败，调用callbacks返回错误
+            callbacks.forEach(cb => {
+                try {
+                    cb(stringifyError);
+                } catch (e) {
+                    log.error('Callback error in saveUserData:', e);
+                }
+            });
+            return;
+        }
+        
+        // 执行实际的保存操作
+        const saveStartTime = performance.now();
+        // 【修复】storage.set内部会再次序列化，所以传递原始对象即可
+        // dataStr在这里已经不再需要，可以立即释放
+        const dataToSave = state.userData;
+        // 注意：不在这里释放dataStr，因为它可能在某些错误场景下还需要
+        // 但可以在storage.set调用后立即释放（通过作用域自然释放）
+        
+        storage.set(dataToSave, (error) => {
+            if (!error) {
+                lastSavedDataHash = currentHash; // 保存成功，更新哈希
+                const saveTime = Math.round(performance.now() - saveStartTime);
+                if (saveTime > 100) {
+                    log.warn('Slow save operation:', saveTime, 'ms');
+                }
+            }
+            
+            // 依次调用所有pending的callbacks
+            callbacks.forEach(cb => {
+                try {
+                    cb(error);
+                } catch (e) {
+                    log.error('Callback error in saveUserData:', e);
+                }
+            });
+        });
     },
     
     /**
@@ -382,22 +452,23 @@ export const core = {
         }
         
         // 【优化】批量应用导航对齐和密度设置（减少重排）
-        if (dom.navigationGrid) {
-            const alignmentStyles = {
-                'left': { marginLeft: '0', marginRight: 'auto' },
-                'center': { marginLeft: 'auto', marginRight: 'auto' },
-                'right': { marginLeft: 'auto', marginRight: '0' }
+        // 修改对齐方式：在父容器上使用justify-content控制对齐（grid宽度为fit-content）
+        if (dom.navigationContainer) {
+            const alignmentMap = {
+                'left': 'flex-start',
+                'center': 'center',
+                'right': 'flex-end'
             };
             
             // 批量应用对齐样式
-            if (state.userData.navigationAlignment && alignmentStyles[state.userData.navigationAlignment]) {
-                Object.assign(dom.navigationGrid.style, alignmentStyles[state.userData.navigationAlignment]);
+            if (state.userData.navigationAlignment && alignmentMap[state.userData.navigationAlignment]) {
+                dom.navigationContainer.style.justifyContent = alignmentMap[state.userData.navigationAlignment];
             }
+        }
             
             // 应用密度设置
-            if (state.userData.navigationItemMinWidth) {
+        if (dom.navigationGrid && state.userData.navigationItemMinWidth) {
                 dom.navigationGrid.style.setProperty('--nav-item-min-width', `${state.userData.navigationItemMinWidth}px`);
-            }
         }
         
         navigationModule.render.all();

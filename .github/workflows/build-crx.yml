@@ -207,10 +207,10 @@ jobs:
             - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
             
             ### ✨ 新增功能
-            - 新增扩展管理功能
+            - 扩展分组改为情景模式
             
             ### 🐛 问题修复
-            - 无
+            - 修复问题
             
             ### ⚡ 性能优化
             - 无

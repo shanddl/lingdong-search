@@ -644,16 +644,17 @@ function init() {
                 const allAlignButtons = dom.navAlignGroup.querySelectorAll('[data-action="set-nav-alignment"]');
                 DOMHelper.toggleButtonGroup(allAlignButtons, null, e.target, ['active', 'selected']);
                 
-                if (dom.navigationGrid) {
-                    const alignmentStyles = {
-                        'left': { marginLeft: '0', marginRight: 'auto' },
-                        'center': { marginLeft: 'auto', marginRight: 'auto' },
-                        'right': { marginLeft: 'auto', marginRight: '0' }
+                // 修改对齐方式：在父容器上使用justify-content控制对齐（grid宽度为fit-content）
+                if (dom.navigationContainer) {
+                    const alignmentMap = {
+                        'left': 'flex-start',
+                        'center': 'center',
+                        'right': 'flex-end'
                     };
                     
-                    const styles = alignmentStyles[align];
-                    if (styles) {
-                        Object.assign(dom.navigationGrid.style, styles);
+                    const justifyContent = alignmentMap[align];
+                    if (justifyContent) {
+                        dom.navigationContainer.style.justifyContent = justifyContent;
                     }
                 }
                 

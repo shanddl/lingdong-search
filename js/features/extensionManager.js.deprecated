@@ -1,0 +1,394 @@
+// =================================================================
+// 扩展管理模块
+// =================================================================
+
+import { logger } from '../logger.js';
+import { state } from '../state.js';
+import { timerManager } from '../utils/timerManager.js';
+import { domSafe } from '../security.js';
+
+const log = logger.module('ExtensionManager');
+
+// 图标缓存（避免重复转换）
+const iconCache = new Map();
+
+// 扩展列表缓存
+let extensionsCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5分钟
+
+export const extensionManager = {
+    /**
+     * 初始化扩展管理器
+     */
+    async init() {
+        try {
+            // 检查是否有management权限
+            if (!chrome.management) {
+                log.error('缺少management权限，扩展管理功能不可用');
+                return false;
+            }
+
+            // 监听扩展事件
+            this.setupEventListeners();
+            
+            log.info('扩展管理器初始化成功');
+            return true;
+        } catch (error) {
+            log.error('扩展管理器初始化失败:', error);
+            return false;
+        }
+    },
+
+    /**
+     * 设置扩展事件监听器
+     */
+    setupEventListeners() {
+        // 监听扩展安装
+        chrome.management.onInstalled.addListener((info) => {
+            log.info('扩展已安装:', info.name);
+            this.invalidateCache();
+        });
+
+        // 监听扩展卸载
+        chrome.management.onUninstalled.addListener((id) => {
+            log.info('扩展已卸载:', id);
+            this.invalidateCache();
+        });
+
+        // 监听扩展启用
+        chrome.management.onEnabled.addListener((info) => {
+            log.info('扩展已启用:', info.name);
+            this.invalidateCache();
+        });
+
+        // 监听扩展禁用
+        chrome.management.onDisabled.addListener((info) => {
+            log.info('扩展已禁用:', info.name);
+            this.invalidateCache();
+        });
+    },
+
+    /**
+     * 使缓存失效
+     */
+    invalidateCache() {
+        extensionsCache = null;
+        cacheTimestamp = null;
+    },
+
+    /**
+     * 获取所有扩展列表（过滤系统扩展和自身）
+     */
+    async getAllExtensions() {
+        try {
+            // 检查缓存
+            if (extensionsCache && cacheTimestamp && 
+                Date.now() - cacheTimestamp < CACHE_DURATION) {
+                log.debug('使用缓存的扩展列表');
+                return extensionsCache;
+            }
+
+            log.info('开始获取扩展列表...');
+            const extensions = await chrome.management.getAll();
+            const selfId = chrome.runtime.id;
+
+            // 过滤扩展：排除系统扩展、应用、主题和自身
+            const filteredExtensions = extensions
+                .filter(ext => {
+                    // 排除自身
+                    if (ext.id === selfId) return false;
+                    
+                    // 只保留扩展类型（排除应用和主题）
+                    if (ext.type !== 'extension') return false;
+                    
+                    // 排除系统扩展（安装类型为admin或sideload）
+                    if (ext.installType === 'admin' || ext.installType === 'sideload') {
+                        return false;
+                    }
+                    
+                    return true;
+                })
+                .map(ext => {
+                    const iconUrl = this.getBestIconUrl(ext);
+                    log.debug(`扩展 ${ext.name} (${ext.id}):`, {
+                        hasIcons: !!ext.icons,
+                        iconsCount: ext.icons?.length || 0,
+                        iconUrl: iconUrl,
+                        icons: ext.icons
+                    });
+                    return {
+                        id: ext.id,
+                        name: ext.name,
+                        description: ext.shortName || ext.description || '',
+                        version: ext.version,
+                        enabled: ext.enabled,
+                        mayDisable: ext.mayDisable,
+                        installType: ext.installType,
+                        homepageUrl: ext.homepageUrl,
+                        optionsUrl: ext.optionsUrl,
+                        iconUrl: iconUrl,
+                        hostPermissions: ext.hostPermissions || [],
+                        permissions: ext.permissions || []
+                    };
+                })
+                .sort((a, b) => {
+                    // 按启用状态排序（启用的在前）
+                    if (a.enabled !== b.enabled) {
+                        return a.enabled ? -1 : 1;
+                    }
+                    // 然后按名称排序
+                    return a.name.localeCompare(b.name, 'zh-CN');
+                });
+
+            // 更新缓存
+            extensionsCache = filteredExtensions;
+            cacheTimestamp = Date.now();
+
+            log.info(`扩展列表获取成功: ${filteredExtensions.length} 个扩展`);
+            return filteredExtensions;
+        } catch (error) {
+            log.error('获取扩展列表失败:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 获取最佳图标URL
+     */
+    getBestIconUrl(extension) {
+        if (!extension.icons || extension.icons.length === 0) {
+            log.debug(`扩展 ${extension.name} 没有图标`, extension);
+            return null;
+        }
+
+        // 优先选择48px图标，其次选择最大的
+        const icon48 = extension.icons.find(icon => icon.size === 48);
+        if (icon48) {
+            log.debug(`扩展 ${extension.name} 使用48px图标:`, icon48.url);
+            // 如果是edge://协议，直接返回（需要在background中处理）
+            return icon48.url;
+        }
+
+        // 选择最大的图标
+        const sortedIcons = extension.icons.sort((a, b) => (b.size || 0) - (a.size || 0));
+        const bestIcon = sortedIcons[0];
+        log.debug(`扩展 ${extension.name} 使用最大图标(${bestIcon.size}px):`, bestIcon.url);
+        return bestIcon.url;
+    },
+
+    /**
+     * 获取扩展图标（通过background中转）
+     */
+    async getExtensionIcon(extensionId, iconUrl) {
+        try {
+            // 检查缓存
+            const cacheKey = `${extensionId}_${iconUrl || 'no-icon'}`;
+            if (iconCache.has(cacheKey)) {
+                log.debug(`使用缓存的图标: ${extensionId}`);
+                return iconCache.get(cacheKey);
+            }
+
+            if (!iconUrl) {
+                log.debug(`扩展 ${extensionId} 没有图标URL，使用占位图标`);
+                // 返回默认占位图标
+                const placeholder = this.getPlaceholderIcon();
+                iconCache.set(cacheKey, placeholder);
+                return placeholder;
+            }
+
+            log.debug(`开始获取扩展图标: ${extensionId}, URL: ${iconUrl}`);
+            console.log(`[ExtensionManager] 发送图标获取请求:`, { extensionId, iconUrl });
+
+            // 通过background获取图标
+            return new Promise((resolve) => {
+                try {
+                    chrome.runtime.sendMessage(
+                        {
+                            action: 'getExtensionIcon',
+                            extensionId,
+                            iconUrl
+                        },
+                        (response) => {
+                            console.log(`[ExtensionManager] 收到background响应:`, { extensionId, response, hasError: !!chrome.runtime.lastError });
+                            
+                            if (chrome.runtime.lastError) {
+                                log.warn(`获取扩展图标失败(${extensionId}):`, chrome.runtime.lastError.message);
+                                console.error(`[ExtensionManager] chrome.runtime.lastError:`, chrome.runtime.lastError);
+                                const placeholder = this.getPlaceholderIcon();
+                                iconCache.set(cacheKey, placeholder);
+                                resolve(placeholder);
+                                return;
+                            }
+
+                        if (response && response.success && response.data) {
+                            // 验证返回的数据格式
+                            if (typeof response.data === 'string' && response.data.startsWith('data:')) {
+                                // 检查是否是占位图标
+                                const isPlaceholder = response.data.includes('PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgi');
+                                console.log(`[ExtensionManager] 图标获取成功(${extensionId}):`, {
+                                    dataLength: response.data.length,
+                                    dataPrefix: response.data.substring(0, 60),
+                                    isPlaceholder: isPlaceholder
+                                });
+                                
+                                if (isPlaceholder) {
+                                    console.warn(`[ExtensionManager] 警告: ${extensionId} 返回的是占位图标`);
+                                }
+                                
+                                log.debug(`扩展图标获取成功: ${extensionId}`, {
+                                    dataLength: response.data.length,
+                                    dataPrefix: response.data.substring(0, 50)
+                                });
+                                iconCache.set(cacheKey, response.data);
+                                resolve(response.data);
+                            } else {
+                                log.warn(`扩展图标数据格式错误(${extensionId}):`, {
+                                    dataType: typeof response.data,
+                                    dataPrefix: String(response.data).substring(0, 50)
+                                });
+                                console.error(`[ExtensionManager] 图标数据格式错误(${extensionId}):`, response.data);
+                                const placeholder = this.getPlaceholderIcon();
+                                iconCache.set(cacheKey, placeholder);
+                                resolve(placeholder);
+                            }
+                        } else {
+                            log.warn(`扩展图标获取失败(${extensionId}):`, response?.error || '未知错误');
+                            console.error(`[ExtensionManager] 图标获取失败(${extensionId}):`, response);
+                            const placeholder = this.getPlaceholderIcon();
+                            iconCache.set(cacheKey, placeholder);
+                            resolve(placeholder);
+                        }
+                    }
+                );
+                } catch (sendError) {
+                    console.error(`[ExtensionManager] 发送消息失败(${extensionId}):`, sendError);
+                    log.error(`发送消息失败(${extensionId}):`, sendError);
+                    const placeholder = this.getPlaceholderIcon();
+                    iconCache.set(cacheKey, placeholder);
+                    resolve(placeholder);
+                }
+            });
+        } catch (error) {
+            log.error(`获取扩展图标失败(${extensionId}):`, error);
+            return this.getPlaceholderIcon();
+        }
+    },
+
+    /**
+     * 获取占位图标
+     */
+    getPlaceholderIcon() {
+        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iIzVGNzM2OCIvPgo8cGF0aCBkPSJNMjQgMTJDMTcuMzcyNiAxMiAxMiAxNy4zNzI2IDEyIDI0QzEyIDMwLjYyNzQgMTcuMzcyNiAzNiAyNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyWiIgZmlsbD0iIzlhYTBhNiIvPgo8L3N2Zz4K';
+    },
+
+    /**
+     * 启用扩展
+     */
+    async enableExtension(extensionId) {
+        try {
+            await chrome.management.setEnabled(extensionId, true);
+            log.info('扩展已启用:', extensionId);
+            this.invalidateCache();
+            return { success: true };
+        } catch (error) {
+            log.error('启用扩展失败:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * 禁用扩展
+     */
+    async disableExtension(extensionId) {
+        try {
+            await chrome.management.setEnabled(extensionId, false);
+            log.info('扩展已禁用:', extensionId);
+            this.invalidateCache();
+            return { success: true };
+        } catch (error) {
+            log.error('禁用扩展失败:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * 打开扩展详情页面
+     */
+    async openExtensionDetails(extensionId) {
+        try {
+            await chrome.tabs.create({
+                url: `chrome://extensions/?id=${extensionId}`
+            });
+            log.info('已打开扩展详情页面:', extensionId);
+        } catch (error) {
+            log.error('打开扩展详情失败:', error);
+            domSafe.showAlert('无法打开扩展详情页面', 'error');
+        }
+    },
+
+    /**
+     * 打开扩展选项页面
+     */
+    async openExtensionOptions(extensionId, optionsUrl) {
+        try {
+            if (!optionsUrl) {
+                domSafe.showAlert('此扩展没有选项页面', 'info');
+                return;
+            }
+            await chrome.tabs.create({ url: optionsUrl });
+            log.info('已打开扩展选项页面:', extensionId);
+        } catch (error) {
+            log.error('打开扩展选项失败:', error);
+            domSafe.showAlert('无法打开扩展选项页面', 'error');
+        }
+    },
+
+    /**
+     * 搜索扩展
+     */
+    searchExtensions(extensions, query) {
+        if (!query || !query.trim()) {
+            return extensions;
+        }
+
+        const lowerQuery = query.toLowerCase().trim();
+        return extensions.filter(ext => {
+            return ext.name.toLowerCase().includes(lowerQuery) ||
+                   ext.description.toLowerCase().includes(lowerQuery) ||
+                   ext.id.toLowerCase().includes(lowerQuery);
+        });
+    },
+
+    /**
+     * 过滤扩展
+     */
+    filterExtensions(extensions, filters) {
+        let filtered = [...extensions];
+
+        // 按状态过滤
+        if (filters.status) {
+            if (filters.status === 'enabled') {
+                filtered = filtered.filter(ext => ext.enabled);
+            } else if (filters.status === 'disabled') {
+                filtered = filtered.filter(ext => !ext.enabled);
+            }
+        }
+
+        // 按安装类型过滤
+        if (filters.installType) {
+            filtered = filtered.filter(ext => ext.installType === filters.installType);
+        }
+
+        return filtered;
+    },
+
+    /**
+     * 清除图标缓存
+     */
+    clearIconCache() {
+        iconCache.clear();
+        log.info('图标缓存已清除');
+    }
+};
+

@@ -1816,6 +1816,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     /* 确保容器能正确约束内部的 #navigation-grid */
     display: flex;
     align-items: flex-start; /* 确保内容从顶部开始，防止错位 */
+    justify-content: center; /* 默认居中对齐，可通过JS动态修改 */
     overflow-y: auto; /* 导航区域可以滚动 */
     overflow-x: hidden; /* 隐藏横向滚动条 */
     flex: 1; /* 占据剩余空间 */
@@ -1837,17 +1838,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 #navigation-grid {
     display: grid;
-    /* 让容器宽度自适应其内容，这是实现精确对齐的关键 */
-    width: fit-content;
-    
-    grid-template-columns: repeat(auto-fill, minmax(var(--nav-item-min-width, 120px), 1fr));
+    /* 使用max-content让grid宽度根据内容计算，配合max-width实现响应式换行 */
+    /* 这样既能响应窗口变化（通过max-width限制），又能让父容器的justify-content生效 */
+    width: max-content;
+    max-width: 100%; /* 当内容超出容器时，grid会被限制，auto-fit会重新计算列数并换行 */
+    /* 使用auto-fit自动计算列数，移除空列，让grid宽度更贴合内容，对齐效果更明显 */
+    grid-template-columns: repeat(auto-fit, minmax(var(--nav-item-min-width, 120px), auto));
     gap: var(--nav-grid-gap);
-    max-width: 100%; /* 不要超过父容器宽度 */
     padding: 10px;
-    transition: outline 0.2s ease;
+    transition: outline 0.2s ease, gap 0.3s ease, padding 0.3s ease;
     overflow: visible; /* 确保内容可见 */
     position: relative; /* 确保定位正确 */
     z-index: 1; /* 设置较低层级，不遮挡搜索建议和AI搜索 */
+    /* 优化换行时的对齐，确保每行内容对齐 */
+    justify-items: center;
+    align-items: start;
 }
 
 /* Infinity风格：拖拽时确保Grid布局平滑 */
@@ -1882,6 +1887,39 @@ body[data-dragging="true"] #navigation-grid {
     border: 1px solid rgba(138, 180, 248, 0.3);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
+
+/* 响应式优化：窗口缩小时的自动换行优化 */
+@media (max-width: 1024px) {
+    #navigation-grid {
+        /* 中等屏幕：稍微减小间距，优化换行效果 */
+        gap: calc(var(--nav-grid-gap) * 0.85);
+        padding: 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    #navigation-grid {
+        /* 平板屏幕：进一步减小间距和padding，优化换行排列 */
+        gap: calc(var(--nav-grid-gap) * 0.7);
+        padding: 6px;
+        /* 调整最小宽度，让更多项目能在一行显示 */
+        grid-template-columns: repeat(auto-fit, minmax(100px, auto));
+    }
+}
+
+@media (max-width: 480px) {
+    #navigation-grid {
+        /* 手机屏幕：最小间距和padding，优化小屏幕显示 */
+        gap: calc(var(--nav-grid-gap) * 0.5);
+        padding: 4px;
+        /* 进一步减小最小宽度，适应小屏幕 */
+        grid-template-columns: repeat(auto-fit, minmax(80px, auto));
+    }
+}
+
+/* 注意：之前的 nav-grid-compact、nav-grid-tight、nav-grid-optimized 类已移除 */
+/* 现在使用JavaScript动态调整width（max-content / 100%）实现自动换行和对齐功能 */
+
 .nav-item {
     position: relative; display: flex; align-items: center; text-decoration: none;
     color: var(--text-primary); background: transparent;

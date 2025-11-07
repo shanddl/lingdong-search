@@ -36,9 +36,13 @@ import { sanitizer } from './js/security.js';
     // 扩展图标缓存
     const iconCache = new Map();
 
-    // 分组数据结构
+    // 【情景模式】数据结构（兼容旧数据）
+    let scenarios = []; // 情景模式列表
+    let ungroupedExtensions = []; // 未分组扩展ID列表（优先权最大）
+    let activeScenarioId = null; // 当前启用的情景模式ID
+    // 【兼容】旧的分组数据结构（用于迁移）
     let groups = [];
-    let extensionGroups = {}; // extensionId -> groupId 映射
+    let extensionGroups = {}; // extensionId -> groupId 映射（旧数据，用于迁移）
 
     /**
      * 向用户显示状态消息
@@ -508,80 +512,103 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
-     * 加载分组数据
+     * 【情景模式】加载情景模式数据（兼容旧数据迁移）
      */
     async function loadGroupsData() {
         try {
-            const result = await chrome.storage.local.get(['extensionGroups', 'groups']);
-            // 直接更新数据，确保与storage同步（不使用条件判断，避免数据不同步）
-            groups = Array.isArray(result.groups) ? result.groups : [];
-            extensionGroups = result.extensionGroups && typeof result.extensionGroups === 'object' ? result.extensionGroups : {};
+            // 从主存储系统加载数据（与extension-manager.js保持一致）
+            const result = await chrome.storage.local.get(['userData']);
+            let userData = result.userData || {};
             
-            logger.debug('分组数据已加载:', { 
-                groupsCount: groups.length, 
-                extensionGroupsCount: Object.keys(extensionGroups).length
+            // 初始化extensionSettings
+            if (!userData.extensionSettings) {
+                userData.extensionSettings = {};
+            }
+            
+            // 【迁移】如果存在旧的groups数据，迁移到scenarios
+            if (userData.extensionSettings.groups && !userData.extensionSettings.scenarios) {
+                userData.extensionSettings.scenarios = JSON.parse(JSON.stringify(userData.extensionSettings.groups));
+                delete userData.extensionSettings.groups;
+                // 保存迁移后的数据
+                await chrome.storage.local.set({ userData });
+                logger.debug('[Popup] 迁移旧分组数据到情景模式');
+            }
+            
+            // 加载情景模式数据
+            scenarios = Array.isArray(userData.extensionSettings.scenarios) ? userData.extensionSettings.scenarios : [];
+            ungroupedExtensions = Array.isArray(userData.extensionSettings.ungroupedExtensions) ? userData.extensionSettings.ungroupedExtensions : [];
+            activeScenarioId = userData.extensionSettings.activeScenarioId || null;
+            
+            // 【兼容】同时加载旧数据（用于向后兼容）
+            const oldResult = await chrome.storage.local.get(['extensionGroups', 'groups']);
+            groups = Array.isArray(oldResult.groups) ? oldResult.groups : [];
+            extensionGroups = oldResult.extensionGroups && typeof oldResult.extensionGroups === 'object' ? oldResult.extensionGroups : {};
+            
+            // 【迁移】如果存在旧的chrome.storage.local数据，迁移到userData
+            if (groups.length > 0 && scenarios.length === 0) {
+                scenarios = groups.map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    order: g.order || 0,
+                    extensionIds: Object.keys(extensionGroups).filter(extId => extensionGroups[extId] === g.id)
+                }));
+                // 保存迁移后的数据
+                userData.extensionSettings.scenarios = scenarios;
+                await chrome.storage.local.set({ userData });
+                logger.debug('[Popup] 从chrome.storage.local迁移数据到userData');
+            }
+            
+            logger.debug('[Popup] 情景模式数据已加载:', { 
+                scenariosCount: scenarios.length, 
+                ungroupedCount: ungroupedExtensions.length,
+                activeScenarioId
             });
         } catch (error) {
-            logger.error('加载分组数据失败:', error);
+            logger.error('[Popup] 加载情景模式数据失败:', error);
             // 出错时重置为空数据
+            scenarios = [];
+            ungroupedExtensions = [];
+            activeScenarioId = null;
             groups = [];
             extensionGroups = {};
         }
     }
 
     /**
-     * 保存分组数据
+     * 【情景模式】保存情景模式数据到userData（与extension-manager.js保持一致）
      */
     async function saveGroupsData() {
         try {
-            // 先保存数据
-            await chrome.storage.local.set({
-                extensionGroups: extensionGroups,
-                groups: groups
+            // 从主存储系统加载现有数据
+            const result = await chrome.storage.local.get(['userData']);
+            let userData = result.userData || {};
+            
+            // 初始化extensionSettings
+            if (!userData.extensionSettings) {
+                userData.extensionSettings = {};
+            }
+            
+            // 保存情景模式数据
+            userData.extensionSettings.scenarios = scenarios;
+            userData.extensionSettings.ungroupedExtensions = ungroupedExtensions;
+            userData.extensionSettings.activeScenarioId = activeScenarioId;
+            
+            // 保存到chrome.storage.local
+            await chrome.storage.local.set({ userData });
+            
+            logger.debug('[Popup] 情景模式数据已保存:', { 
+                scenariosCount: scenarios.length, 
+                ungroupedCount: ungroupedExtensions.length,
+                activeScenarioId
             });
-            
-            // 验证保存是否成功，并确保数据已写入
-            let retryCount = 0;
-            const maxRetries = 3;
-            while (retryCount < maxRetries) {
-                const verify = await chrome.storage.local.get(['extensionGroups', 'groups']);
-                if (verify.groups && verify.extensionGroups) {
-                    // 验证数据是否匹配
-                    const groupsMatch = JSON.stringify(verify.groups) === JSON.stringify(groups);
-                    const extensionGroupsMatch = JSON.stringify(verify.extensionGroups) === JSON.stringify(extensionGroups);
-                    
-                    if (groupsMatch && extensionGroupsMatch) {
-                        logger.debug('分组数据已保存并验证:', { 
-                            groupsCount: verify.groups.length, 
-                            extensionGroupsCount: Object.keys(verify.extensionGroups).length 
-                        });
-                        return; // 数据已正确保存
-                    } else {
-                        logger.warn(`数据验证失败 (重试 ${retryCount + 1}/${maxRetries})`);
-                        // 如果数据不匹配，等待一小段时间后重试
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        // 重新保存
-                        await chrome.storage.local.set({
-                            extensionGroups: extensionGroups,
-                            groups: groups
-                        });
-                    }
-                }
-                retryCount++;
-            }
-            
-            // 如果重试后仍然失败，记录警告但继续执行
-            if (retryCount >= maxRetries) {
-                logger.warn('分组数据保存验证失败，但继续执行');
-            }
         } catch (error) {
-            logger.error('保存分组数据失败:', error);
+            logger.error('[Popup] 保存情景模式数据失败:', error);
             throw error; // 抛出错误以便调用者处理
         }
     }
 
     /**
-     * 加载扩展列表（支持分组）
+     * 【情景模式】加载扩展列表（支持情景模式）
      */
     async function loadExtensions(searchQuery = '') {
         try {
@@ -590,7 +617,7 @@ import { sanitizer } from './js/security.js';
                 return;
             }
 
-            // 加载分组数据（在开始时加载一次，确保使用最新数据）
+            // 【情景模式】加载情景模式数据（在开始时加载一次，确保使用最新数据）
             await loadGroupsData();
             // 再次确保数据是最新的（防止storage延迟）
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -641,51 +668,74 @@ import { sanitizer } from './js/security.js';
                 return;
             }
 
-            // 按分组组织扩展
+            // 【情景模式】按情景模式组织扩展（支持一个扩展属于多个情景模式）
             // 注意：在函数开始时已经调用了loadGroupsData()，这里不需要再次调用
-            // 直接使用最新的groups和extensionGroups变量
+            // 直接使用最新的scenarios和ungroupedExtensions变量
             const groupedExtensions = {};
-            const ungroupedExtensions = [];
+            const ungroupedExtList = [];
 
-            // 按order排序分组
-            const sortedGroups = [...groups].sort((a, b) => (a.order || 0) - (b.order || 0));
+            // 按order排序情景模式
+            const sortedScenarios = [...scenarios].sort((a, b) => (a.order || 0) - (b.order || 0));
 
-            // 初始化分组
-            sortedGroups.forEach(group => {
-                groupedExtensions[group.id] = [];
+            // 初始化情景模式
+            sortedScenarios.forEach(scenario => {
+                groupedExtensions[scenario.id] = [];
             });
 
-            // 分配扩展到分组
-            filtered.forEach(ext => {
-                const groupId = extensionGroups[ext.id];
-                if (groupId && groupedExtensions[groupId]) {
-                    groupedExtensions[groupId].push(ext);
-                } else {
-                    ungroupedExtensions.push(ext);
+            // 【情景模式】分配扩展到情景模式（一个扩展可以属于多个情景模式）
+            // 首先收集所有在情景模式中的扩展ID
+            const scenarioExtIds = new Set();
+            sortedScenarios.forEach(scenario => {
+                if (scenario.extensionIds) {
+                    scenario.extensionIds.forEach(extId => scenarioExtIds.add(extId));
                 }
             });
+            
+            filtered.forEach(ext => {
+                // 检查扩展是否在未分组列表中（优先权最大）
+                const isInUngroupedList = ungroupedExtensions.includes(ext.id);
+                // 检查扩展是否不在任何情景模式中
+                const isNotInAnyScenario = !scenarioExtIds.has(ext.id);
+                
+                // 【关键修复】如果扩展在未分组列表中，或者不在任何情景模式中，添加到未分组列表
+                if (isInUngroupedList || isNotInAnyScenario) {
+                    // 避免重复添加
+                    if (!ungroupedExtList.find(e => e.id === ext.id)) {
+                        ungroupedExtList.push(ext);
+                    }
+                }
+                
+                // 将扩展添加到所有包含它的情景模式中
+                sortedScenarios.forEach(scenario => {
+                    if (scenario.extensionIds && scenario.extensionIds.includes(ext.id)) {
+                        if (!groupedExtensions[scenario.id]) {
+                            groupedExtensions[scenario.id] = [];
+                        }
+                        groupedExtensions[scenario.id].push(ext);
+                    }
+                });
+            });
 
-            // 渲染分组
-            // 如果有搜索查询，只显示包含匹配扩展的分组
-            // 如果没有搜索查询，显示所有分组（包括空分组），以便用户可以添加扩展
-            for (const group of sortedGroups) {
-                const groupExts = groupedExtensions[group.id] || [];
-                // 如果有搜索查询，只显示有扩展的分组；否则显示所有分组（包括空分组）
+            // 【情景模式】渲染情景模式
+            // 如果有搜索查询，只显示包含匹配扩展的情景模式
+            // 如果没有搜索查询，显示所有情景模式（包括空情景模式），以便用户可以添加扩展
+            for (const scenario of sortedScenarios) {
+                const scenarioExts = groupedExtensions[scenario.id] || [];
+                // 如果有搜索查询，只显示有扩展的情景模式；否则显示所有情景模式（包括空情景模式）
                 if (searchQuery.trim()) {
-                    // 搜索时只显示有匹配结果的分组
-                    if (groupExts.length > 0) {
-                        await renderGroup(group, groupExts);
+                    // 搜索时只显示有匹配结果的情景模式
+                    if (scenarioExts.length > 0) {
+                        await renderGroup(scenario, scenarioExts);
                     }
                 } else {
-                    // 非搜索时显示所有分组（包括空分组），以便用户可以看到新创建的分组
-                    await renderGroup(group, groupExts);
+                    // 非搜索时显示所有情景模式（包括空情景模式），以便用户可以看到新创建的情景模式
+                    await renderGroup(scenario, scenarioExts);
                 }
             }
 
-            // 渲染未分组扩展
-            if (ungroupedExtensions.length > 0) {
-                await renderUngroupedExtensions(ungroupedExtensions);
-            }
+            // 【情景模式】渲染未分组扩展（优先权最大）
+            // 【关键修复】始终显示未分组，即使为空（方便用户添加扩展）
+            await renderUngroupedExtensions(ungroupedExtList);
 
         } catch (error) {
             logger.error('加载扩展列表失败:', error);
@@ -694,7 +744,7 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
-     * 渲染分组
+     * 【情景模式】渲染情景模式
      */
     async function renderGroup(group, extensions) {
         const groupContainer = document.createElement('div');
@@ -707,7 +757,7 @@ import { sanitizer } from './js/security.js';
             groupContainer.classList.add('collapsed');
         }
 
-        // 分组头部
+        // 【情景模式】情景模式头部
         const header = document.createElement('div');
         header.className = 'group-container-header';
         header.innerHTML = `
@@ -719,14 +769,14 @@ import { sanitizer } from './js/security.js';
             <div class="group-header-right">
                 <button class="group-btn move-up-btn" data-group-id="${group.id}" title="上移">▲</button>
                 <button class="group-btn move-down-btn" data-group-id="${group.id}" title="下移">▼</button>
-                <button class="group-btn enable-group-btn" data-group-id="${group.id}" title="启用分组">启用</button>
-                <button class="group-btn disable-group-btn" data-group-id="${group.id}" title="禁用分组">禁用</button>
-                <button class="group-btn edit-group-btn" data-group-id="${group.id}" title="编辑分组">编辑</button>
-                <button class="group-btn delete-group-btn" data-group-id="${group.id}" title="删除分组">删除</button>
+                <button class="group-btn enable-group-btn" data-group-id="${group.id}" title="启用情景模式">启用</button>
+                <button class="group-btn disable-group-btn" data-group-id="${group.id}" title="禁用情景模式">禁用</button>
+                <button class="group-btn edit-group-btn" data-group-id="${group.id}" title="编辑情景模式">编辑</button>
+                <button class="group-btn delete-group-btn" data-group-id="${group.id}" title="删除情景模式">删除</button>
             </div>
         `;
 
-        // 分组内容
+        // 【情景模式】情景模式内容
         const content = document.createElement('div');
         content.className = 'group-container-content extension-grid';
 
@@ -828,7 +878,7 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
-     * 切换分组折叠状态
+     * 【情景模式】切换情景模式折叠状态
      */
     function toggleGroupCollapse(groupId) {
         const container = document.querySelector(`[data-group-id="${groupId}"]`);
@@ -845,26 +895,27 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
-     * 创建分组
+     * 【情景模式】创建情景模式
      */
     async function createGroup() {
-        const name = prompt('请输入分组名称：');
+        const name = prompt('请输入情景模式名称：');
         if (!name || !name.trim()) return;
 
         // 计算新的order值
         let newOrder = 0;
-        if (groups.length > 0) {
-            const maxOrder = Math.max(...groups.map(g => g.order || 0));
+        if (scenarios.length > 0) {
+            const maxOrder = Math.max(...scenarios.map(s => s.order || 0));
             newOrder = maxOrder + 1;
         }
 
-        const newGroup = {
-            id: `group_${Date.now()}`,
+        const newScenario = {
+            id: `scenario_${Date.now()}`,
             name: name.trim(),
-            order: newOrder
+            order: newOrder,
+            extensionIds: [] // 【情景模式】初始化扩展ID列表
         };
 
-        groups.push(newGroup);
+        scenarios.push(newScenario);
         // 保存数据（saveGroupsData会验证保存是否成功）
         await saveGroupsData();
         
@@ -881,84 +932,90 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
-     * 编辑分组
+     * 【情景模式】编辑情景模式
      */
     async function editGroup(groupId) {
-        const group = groups.find(g => g.id === groupId);
-        if (!group) return;
+        const scenario = scenarios.find(s => s.id === groupId);
+        if (!scenario) return;
 
-        const newName = prompt('请输入新分组名称：', group.name);
+        const newName = prompt('请输入新情景模式名称：', scenario.name);
         if (!newName || !newName.trim()) return;
 
-        group.name = newName.trim();
+        scenario.name = newName.trim();
         await saveGroupsData();
         await loadExtensions(getCurrentSearch());
     }
 
     /**
-     * 删除分组
+     * 【情景模式】删除情景模式
      */
     async function deleteGroup(groupId) {
-        if (!confirm('确定要删除这个分组吗？分组内的扩展将变为未分组。')) return;
+        if (!confirm('确定要删除这个情景模式吗？扩展将从该情景模式中移除，但不会影响其他情景模式。')) return;
 
-        // 从groups中移除
-        groups = groups.filter(g => g.id !== groupId);
-
-        // 从extensionGroups中移除所有关联
-        Object.keys(extensionGroups).forEach(extId => {
-            if (extensionGroups[extId] === groupId) {
-                delete extensionGroups[extId];
-            }
-        });
+        // 从scenarios中移除
+        const scenarioIndex = scenarios.findIndex(s => s.id === groupId);
+        if (scenarioIndex === -1) return;
+        
+        const scenario = scenarios[scenarioIndex];
+        scenarios.splice(scenarioIndex, 1);
+        
+        // 【情景模式】扩展可以属于多个情景模式，删除情景模式时不需要从未分组中移除
+        // 如果扩展不再属于任何情景模式，会自动显示在未分组中（由loadExtensions处理）
 
         await saveGroupsData();
         await loadExtensions(getCurrentSearch());
     }
 
     /**
-     * 上移分组
+     * 【情景模式】上移情景模式
      */
     async function moveGroupUp(groupId) {
-        const index = groups.findIndex(g => g.id === groupId);
+        const index = scenarios.findIndex(s => s.id === groupId);
         if (index <= 0) return;
 
-        const currentOrder = groups[index].order || 0;
-        const prevOrder = groups[index - 1].order || 0;
+        const currentOrder = scenarios[index].order || 0;
+        const prevOrder = scenarios[index - 1].order || 0;
 
-        groups[index].order = prevOrder;
-        groups[index - 1].order = currentOrder;
+        scenarios[index].order = prevOrder;
+        scenarios[index - 1].order = currentOrder;
 
-        groups.sort((a, b) => (a.order || 0) - (b.order || 0));
+        scenarios.sort((a, b) => (a.order || 0) - (b.order || 0));
         await saveGroupsData();
         await loadExtensions(getCurrentSearch());
     }
 
     /**
-     * 下移分组
+     * 【情景模式】下移情景模式
      */
     async function moveGroupDown(groupId) {
-        const index = groups.findIndex(g => g.id === groupId);
-        if (index < 0 || index >= groups.length - 1) return;
+        const index = scenarios.findIndex(s => s.id === groupId);
+        if (index < 0 || index >= scenarios.length - 1) return;
 
-        const currentOrder = groups[index].order || 0;
-        const nextOrder = groups[index + 1].order || 0;
+        const currentOrder = scenarios[index].order || 0;
+        const nextOrder = scenarios[index + 1].order || 0;
 
-        groups[index].order = nextOrder;
-        groups[index + 1].order = currentOrder;
+        scenarios[index].order = nextOrder;
+        scenarios[index + 1].order = currentOrder;
 
-        groups.sort((a, b) => (a.order || 0) - (b.order || 0));
+        scenarios.sort((a, b) => (a.order || 0) - (b.order || 0));
         await saveGroupsData();
         await loadExtensions(getCurrentSearch());
     }
 
     /**
-     * 批量启用/禁用分组
+     * 【情景模式】批量启用/禁用情景模式
      */
     async function toggleGroupExtensions(groupId, enabled) {
         try {
-            const groupExtIds = Object.keys(extensionGroups).filter(
-                extId => extensionGroups[extId] === groupId
-            );
+            // 找到情景模式
+            const scenario = scenarios.find(s => s.id === groupId);
+            if (!scenario || !scenario.extensionIds) return;
+            
+            // 【情景模式】获取未分组扩展列表（优先权最大）
+            const ungroupedExtIds = new Set(ungroupedExtensions);
+            
+            // 获取该情景模式中的所有扩展ID（跳过未分组扩展）
+            const groupExtIds = scenario.extensionIds.filter(extId => !ungroupedExtIds.has(extId));
 
             for (const extId of groupExtIds) {
                 try {
@@ -967,7 +1024,36 @@ import { sanitizer } from './js/security.js';
                     logger.warn(`无法切换扩展 ${extId}:`, error);
                 }
             }
-
+            
+            // 【情景模式】如果启用情景模式，设置为活动情景模式
+            if (enabled) {
+                activeScenarioId = groupId;
+                // 禁用其他扩展（跳过未分组、当前情景模式的扩展，以及当前扩展本身）
+                const allExtensions = await chrome.management.getAll();
+                const currentScenarioExtIds = new Set(scenario.extensionIds);
+                // 【关键修复】获取当前扩展ID（灵动搜索本身），避免禁用自己
+                const currentExtensionId = chrome.runtime.id;
+                
+                for (const ext of allExtensions) {
+                    // 跳过：未分组扩展、当前情景模式的扩展、当前扩展本身
+                    if (!ungroupedExtIds.has(ext.id) && 
+                        !currentScenarioExtIds.has(ext.id) && 
+                        ext.id !== currentExtensionId) {
+                        try {
+                            await chrome.management.setEnabled(ext.id, false);
+                        } catch (error) {
+                            logger.warn(`无法禁用扩展 ${ext.id}:`, error);
+                        }
+                    }
+                }
+            } else {
+                // 如果禁用情景模式，清除活动情景模式
+                if (activeScenarioId === groupId) {
+                    activeScenarioId = null;
+                }
+            }
+            
+            await saveGroupsData();
             await loadExtensions(getCurrentSearch());
         } catch (error) {
             logger.error('批量操作失败:', error);
@@ -979,7 +1065,7 @@ import { sanitizer } from './js/security.js';
      * 显示右键菜单
      */
     async function showContextMenu(event, ext) {
-        // 确保分组数据已加载
+        // 【情景模式】确保情景模式数据已加载
         await loadGroupsData();
         
         // 移除现有菜单
@@ -999,10 +1085,10 @@ import { sanitizer } from './js/security.js';
         // 动态计算菜单高度（根据实际菜单项数量）
         const menuItemHeight = 28;
         const dividerHeight = 9; // 分隔线高度（1px + 上下各4px margin）
-        // 基础菜单项：启用/禁用、查看详情、分隔线、添加到分组（子菜单不计算高度）、选项、分隔线、查看商店来源、删除扩展 = 7项（2个分隔线）
+        // 基础菜单项：启用/禁用、查看详情、分隔线、分配到情景模式（子菜单不计算高度）、选项、分隔线、查看商店来源、删除扩展 = 7项（2个分隔线）
         let menuItemCount = 7;
-        // 如果已在分组中，添加"从分组移除"项
-        if (extensionGroups[ext.id]) {
+        // 【情景模式】如果已在情景模式中，添加"从所有情景模式移除"项
+        if (currentScenarios.length > 0) {
             menuItemCount += 1;
         }
         const menuHeight = menuItemCount * menuItemHeight + dividerHeight * 2 + 12;
@@ -1021,9 +1107,9 @@ import { sanitizer } from './js/security.js';
         menu.style.top = `${top}px`;
         menu.style.zIndex = '10000';
 
-        // 检查扩展是否已在分组中
-        const currentGroupId = extensionGroups[ext.id];
-        const currentGroup = currentGroupId ? groups.find(g => g.id === currentGroupId) : null;
+        // 【情景模式】检查扩展所属的情景模式（支持多个）
+        const currentScenarios = scenarios.filter(s => s.extensionIds && s.extensionIds.includes(ext.id));
+        const isUngrouped = ungroupedExtensions.includes(ext.id);
 
         // 构建菜单HTML
         let menuHTML = `
@@ -1031,32 +1117,47 @@ import { sanitizer } from './js/security.js';
             <div class="context-menu-item" data-action="details">查看详情</div>
             <div class="context-menu-divider"></div>
             <div class="context-menu-item context-menu-parent" data-action="add-to-group">
-                <span>添加到分组</span>
+                <span>分配到情景模式</span>
                 <span class="context-menu-arrow">▶</span>
             </div>
             <div class="context-submenu" data-submenu="add-to-group">
-                <div class="context-menu-item context-submenu-item" data-group-id="">未分组${!currentGroupId ? ' ✓' : ''}</div>
+                <div class="context-menu-item context-submenu-item" data-group-id="">未分组${isUngrouped ? ' ✓' : ''}</div>
         `;
 
-        // 添加所有分组选项（按order排序）
-        const sortedGroupsForMenu = [...groups].sort((a, b) => (a.order || 0) - (b.order || 0));
-        sortedGroupsForMenu.forEach(group => {
-            const isSelected = currentGroupId === group.id;
+        // 【情景模式】添加所有情景模式选项（按order排序，支持多选）
+        const sortedScenariosForMenu = [...scenarios].sort((a, b) => (a.order || 0) - (b.order || 0));
+        sortedScenariosForMenu.forEach(scenario => {
+            const isInScenario = currentScenarios.some(s => s.id === scenario.id);
+            const isActive = scenario.id === activeScenarioId;
+            let text = sanitizer.escapeHtml(scenario.name);
+            if (isInScenario) text += ' ✓';
+            if (isActive) text += ' [已启用]';
             menuHTML += `
-                <div class="context-menu-item context-submenu-item" data-group-id="${group.id}">${sanitizer.escapeHtml(group.name)}${isSelected ? ' ✓' : ''}</div>
+                <div class="context-menu-item context-submenu-item" data-group-id="${scenario.id}">${text}</div>
             `;
         });
 
         menuHTML += `
                 <div class="context-menu-divider"></div>
-                <div class="context-menu-item context-submenu-item" data-action="create-group">+ 创建新分组</div>
+                <div class="context-menu-item context-submenu-item" data-action="create-group">+ 新建情景模式</div>
             </div>
         `;
 
-        // 如果已在分组中，显示"从分组移除"
-        if (currentGroup) {
+        // 【情景模式】如果已在情景模式中，显示"从所有情景模式移除"
+        if (currentScenarios.length > 0) {
             menuHTML += `
-                <div class="context-menu-item" data-action="remove-from-group">从分组移除 (${sanitizer.escapeHtml(currentGroup.name)})</div>
+                <div class="context-menu-item" data-action="remove-from-all-scenarios">从所有情景模式移除</div>
+            `;
+        }
+        
+        // 【情景模式】如果不在未分组中，显示"添加到未分组（优先权最大）"
+        if (!isUngrouped) {
+            menuHTML += `
+                <div class="context-menu-item" data-action="add-to-ungrouped">添加到未分组（优先权最大）</div>
+            `;
+        } else {
+            menuHTML += `
+                <div class="context-menu-item" data-action="remove-from-ungrouped">从未分组移除</div>
             `;
         }
 
@@ -1170,7 +1271,7 @@ import { sanitizer } from './js/security.js';
                 
                 if (item.dataset.action === 'create-group') {
                     await createGroup();
-                    // 重新显示菜单（延迟一点确保分组数据已保存）
+                    // 重新显示菜单（延迟一点确保情景模式数据已保存）
                     menu.remove();
                     // 创建一个新的事件对象，使用菜单的原始位置
                     const syntheticEvent = {
@@ -1181,7 +1282,7 @@ import { sanitizer } from './js/security.js';
                     };
                     // 等待storage写入完成，然后重新显示菜单
                     // 注意：createGroup已经保存了数据，所以不需要再次调用loadGroupsData
-                    // showContextMenu内部会调用loadGroupsData()，确保菜单显示最新分组
+                    // showContextMenu内部会调用loadGroupsData()，确保菜单显示最新情景模式
                     await new Promise(resolve => setTimeout(resolve, 150));
                     try {
                         const latestExt = await chrome.management.get(ext.id);
@@ -1191,12 +1292,34 @@ import { sanitizer } from './js/security.js';
                         await showContextMenu(syntheticEvent, ext);
                     }
                 } else {
-                    // groupId可能是空字符串（未分组）或有效的分组ID
-                    // 空字符串表示"未分组"，需要删除映射
+                    // 【情景模式】groupId可能是空字符串（未分组）或有效的情景模式ID
                     if (groupId === '' || groupId === undefined) {
-                        delete extensionGroups[ext.id];
+                        // 添加到未分组（优先权最大）
+                        if (!ungroupedExtensions.includes(ext.id)) {
+                            ungroupedExtensions.push(ext.id);
+                        }
                     } else if (groupId) {
-                        extensionGroups[ext.id] = groupId;
+                        // 【情景模式】添加到情景模式（允许属于多个情景模式）
+                        const scenario = scenarios.find(s => s.id === groupId);
+                        if (scenario) {
+                            // 如果已经在情景模式中，则从该情景模式移除
+                            if (scenario.extensionIds && scenario.extensionIds.includes(ext.id)) {
+                                const index = scenario.extensionIds.indexOf(ext.id);
+                                scenario.extensionIds.splice(index, 1);
+                            } else {
+                                // 添加到情景模式
+                                if (!scenario.extensionIds) {
+                                    scenario.extensionIds = [];
+                                }
+                                scenario.extensionIds.push(ext.id);
+                            }
+                            // 【关键修复】确保扩展仍然在未分组中（如果之前就在）
+                            const wasUngrouped = ungroupedExtensions.includes(ext.id);
+                            if (wasUngrouped && !ungroupedExtensions.includes(ext.id)) {
+                                logger.warn(`[Popup] 警告：扩展 ${ext.id} 在添加到情景模式后从未分组中丢失，正在恢复`);
+                                ungroupedExtensions.push(ext.id);
+                            }
+                        }
                     }
                     await saveGroupsData();
                     
@@ -1214,17 +1337,59 @@ import { sanitizer } from './js/security.js';
             });
         });
 
-        // 点击"从分组移除"（如果存在）
-        const removeFromGroupItem = menu.querySelector('[data-action="remove-from-group"]');
-        if (removeFromGroupItem) {
-            removeFromGroupItem.addEventListener('click', async (e) => {
+        // 【情景模式】点击"从所有情景模式移除"（如果存在）
+        const removeFromAllScenariosItem = menu.querySelector('[data-action="remove-from-all-scenarios"]');
+        if (removeFromAllScenariosItem) {
+            removeFromAllScenariosItem.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                delete extensionGroups[ext.id];
+                // 从所有情景模式中移除扩展
+                scenarios.forEach(scenario => {
+                    if (scenario.extensionIds) {
+                        const index = scenario.extensionIds.indexOf(ext.id);
+                        if (index !== -1) {
+                            scenario.extensionIds.splice(index, 1);
+                        }
+                    }
+                });
+                // 如果不再属于任何情景模式，添加到未分组
+                const remainingScenarios = scenarios.filter(s => s.extensionIds && s.extensionIds.includes(ext.id));
+                if (remainingScenarios.length === 0 && !ungroupedExtensions.includes(ext.id)) {
+                    ungroupedExtensions.push(ext.id);
+                }
                 await saveGroupsData();
-                // 等待storage写入完成，然后重新渲染
-                // 注意：不要调用loadGroupsData()，因为内存中的extensionGroups已经更新了
                 await new Promise(resolve => setTimeout(resolve, 100));
                 await loadExtensions(getCurrentSearch());
+                menu.remove();
+            });
+        }
+        
+        // 【情景模式】点击"添加到未分组"（如果存在）
+        const addToUngroupedItem = menu.querySelector('[data-action="add-to-ungrouped"]');
+        if (addToUngroupedItem) {
+            addToUngroupedItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (!ungroupedExtensions.includes(ext.id)) {
+                    ungroupedExtensions.push(ext.id);
+                    await saveGroupsData();
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await loadExtensions(getCurrentSearch());
+                }
+                menu.remove();
+            });
+        }
+        
+        // 【情景模式】点击"从未分组移除"（如果存在）
+        const removeFromUngroupedItem = menu.querySelector('[data-action="remove-from-ungrouped"]');
+        if (removeFromUngroupedItem) {
+            removeFromUngroupedItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const index = ungroupedExtensions.indexOf(ext.id);
+                if (index !== -1) {
+                    ungroupedExtensions.splice(index, 1);
+                    await saveGroupsData();
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await loadExtensions(getCurrentSearch());
+                }
                 menu.remove();
             });
         }
@@ -1263,13 +1428,21 @@ import { sanitizer } from './js/security.js';
                 const confirmMessage = `确定要删除扩展 "${sanitizer.escapeHtml(ext.name || '未知扩展')}" 吗？\n\n此操作无法撤销！`;
                 if (confirm(confirmMessage)) {
                     try {
-                        // 先从分组中移除
-                        if (extensionGroups[ext.id]) {
-                            delete extensionGroups[ext.id];
-                            await saveGroupsData();
-                            // 确保数据已保存
-                            await loadGroupsData();
+                        // 【情景模式】从所有情景模式中移除扩展
+                        scenarios.forEach(scenario => {
+                            if (scenario.extensionIds) {
+                                const index = scenario.extensionIds.indexOf(ext.id);
+                                if (index !== -1) {
+                                    scenario.extensionIds.splice(index, 1);
+                                }
+                            }
+                        });
+                        // 从未分组中移除
+                        const ungroupedIndex = ungroupedExtensions.indexOf(ext.id);
+                        if (ungroupedIndex !== -1) {
+                            ungroupedExtensions.splice(ungroupedIndex, 1);
                         }
+                        await saveGroupsData();
                         
                         // 卸载扩展
                         await chrome.management.uninstall(ext.id);

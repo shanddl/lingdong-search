@@ -95,7 +95,10 @@ export const storage = {
             
             // 1. 先保存到 localStorage（主存储）
             try {
-                localStorage.setItem(STATIC_CONFIG.CONSTANTS.STORAGE_KEY, JSON.stringify(data));
+                // 保存到localStorage
+                const dataToSave = JSON.stringify(data);
+                localStorage.setItem(STATIC_CONFIG.CONSTANTS.STORAGE_KEY, dataToSave);
+                logger.debug('Saved to localStorage, size:', Math.round(dataToSave.length / 1024), 'KB');
             } catch (e) {
                 // localStorage 失败（可能配额满了）
                 logger.error('Failed to save to localStorage:', e);

@@ -14,6 +14,7 @@ import { ButtonGroupHelper } from '../utils/buttonGroupHelper.js';
 import { iconSourceTester } from '../utils/iconHelper.js';
 import { timerManager } from '../utils/timerManager.js';
 import { NotificationService } from '../utils/notificationService.js';
+import { responsiveUtils } from '../utils/mobileDetection.js';
 
 // 存储导航模块的事件监听器ID
 const navigationEventIds = [];
@@ -77,6 +78,10 @@ export const navigationModule = {
     },
     
     utils: {
+        // 存储resize清理函数和observer
+        cleanupResize: null,
+        layoutObserver: null,
+        
         applyAppearanceSettings: (size, gap) => {
             document.documentElement.style.setProperty('--nav-item-size', `${size}px`);
             document.documentElement.style.setProperty('--nav-grid-gap', `${gap}px`);
@@ -466,7 +471,7 @@ export const navigationModule = {
             // 添加userData完整性检查
             if (!state.userData || !state.userData.navigationGroups) {
                 logger.error('userData or navigationGroups is null/undefined');
-                dom.navigationGrid.style.display = 'block';
+                dom.navigationGrid.style.display = 'grid'; // 保持grid布局
                 dom.navigationGrid.innerHTML = '';
                 document.body.removeAttribute('data-updating');
                 return;
@@ -474,7 +479,7 @@ export const navigationModule = {
             
             // 验证导航组数据
             if (state.userData.navigationGroups.length === 0) {
-                dom.navigationGrid.style.display = 'block';
+                dom.navigationGrid.style.display = 'grid'; // 保持grid布局
                 dom.navigationGrid.innerHTML = '';
                 logger.debug('No navigation groups available');
                 document.body.removeAttribute('data-updating');
@@ -512,7 +517,7 @@ export const navigationModule = {
             }
             
             if (activeGroup.items.length === 0) {
-                dom.navigationGrid.style.display = 'block';
+                dom.navigationGrid.style.display = 'grid'; // 保持grid布局
                 dom.navigationGrid.innerHTML = '';
                 logger.debug('No items to display');
                 document.body.removeAttribute('data-updating');
@@ -532,7 +537,7 @@ export const navigationModule = {
             requestAnimationFrame(() => {
                 dom.navigationGrid.innerHTML = '';
                 Object.assign(dom.navigationGrid.style, {
-                    display: 'flex',
+                    display: 'grid', // 保持grid布局，实现自动换行
                     opacity: '0',
                     transition: 'opacity 0.2s ease-in'
                 });
@@ -544,9 +549,10 @@ export const navigationModule = {
                     const navItem = document.createElement('div');
                     navItem.className = 'nav-item';
                     navItem.dataset.url = item.url;
-                    navItem.draggable = true;
+                    navItem.draggable = true; // 【关键】设置draggable属性
                     navItem.dataset.itemId = item.id;
                     navItem.style.cursor = 'pointer';
+                    
                     
                     const iconWrapper = document.createElement('div');
                     iconWrapper.className = 'nav-item-icon-wrapper';
@@ -783,10 +789,9 @@ export const navigationModule = {
                             }
                         });
                         
-                        // 重置状态
-                        navigationModule.state.draggedItemIds = [];
-                        navigationModule.state.draggedItemId = null;
-                        navigationModule.state.draggedItem = null;
+                        // 【关键修复】不要在这里重置draggedItemId和draggedItem
+                        // 因为onDrop可能在dragend之后才触发，需要这些状态来保存数据
+                        // 状态清理应该在onDrop完成后进行
                     })
                 );
             }
@@ -874,6 +879,86 @@ export const navigationModule = {
                         }
                     })
                 );
+            }
+            
+            // 【智能方案】动态调整grid宽度，实现自动换行和对齐功能兼得
+            // 核心思路：让grid宽度 = min(容器宽度, 内容所需宽度)
+            // 这样既能响应窗口变化（触发换行），又能让父容器的justify-content生效（对齐功能）
+            if (dom.navigationGrid && dom.navigationContainer) {
+                /**
+                 * 动态调整grid宽度，实现自动换行和对齐功能兼得
+                 */
+                const adjustGridWidth = () => {
+                    if (!dom.navigationGrid || !dom.navigationContainer) return;
+                    
+                    // 获取容器可用宽度
+                    const containerWidth = dom.navigationContainer.clientWidth;
+                    if (containerWidth === 0) return; // 容器未渲染，跳过
+                    
+                    const gridPadding = parseInt(getComputedStyle(dom.navigationGrid).paddingLeft) + 
+                                      parseInt(getComputedStyle(dom.navigationGrid).paddingRight);
+                    const availableWidth = containerWidth - gridPadding;
+                    
+                    // 临时设置为max-content，测量内容实际所需宽度
+                    dom.navigationGrid.style.width = 'max-content';
+                    
+                    // 强制重排：读取offsetWidth触发重排
+                    void dom.navigationGrid.offsetWidth;
+                    
+                    // 获取实际内容宽度
+                    const contentWidth = dom.navigationGrid.scrollWidth;
+                    
+                    // 设置grid宽度为min(容器宽度, 内容宽度)
+                    // 如果内容宽度 <= 容器宽度，使用内容宽度（对齐功能生效）
+                    // 如果内容宽度 > 容器宽度，使用容器宽度（触发换行）
+                    if (contentWidth > 0 && contentWidth <= availableWidth) {
+                        // 内容能放下，使用内容宽度，让对齐功能生效
+                        dom.navigationGrid.style.width = 'max-content';
+                    } else {
+                        // 内容放不下，使用容器宽度，触发自动换行
+                        dom.navigationGrid.style.width = '100%';
+                    }
+                };
+                
+                // 监听窗口大小变化，动态调整grid宽度
+                const cleanupResize = responsiveUtils.onResize(() => {
+                    timerManager.setTimeout('navigation-grid-width-adjust', () => {
+                        adjustGridWidth();
+                    }, 50);
+                }, 150);
+                
+                // 初始执行一次（延迟执行，确保导航已渲染）
+                timerManager.setTimeout('navigation-grid-width-adjust-init', () => {
+                    adjustGridWidth();
+                }, 200);
+                
+                // 在导航渲染完成后也执行一次
+                const originalRenderGrid = navigationModule.render.grid;
+                navigationModule.render.grid = function() {
+                    const result = originalRenderGrid.apply(this, arguments);
+                    timerManager.setTimeout('navigation-grid-width-adjust-after-render', () => {
+                        adjustGridWidth();
+                    }, 100);
+                    return result;
+                };
+                
+                // 监听导航项变化，重新调整宽度
+                const observer = new MutationObserver(() => {
+                    timerManager.setTimeout('navigation-grid-width-adjust-mutation', () => {
+                        adjustGridWidth();
+                    }, 100);
+                });
+                
+                if (dom.navigationGrid) {
+                    observer.observe(dom.navigationGrid, {
+                        childList: true,
+                        subtree: true
+                    });
+                }
+                
+                // 存储清理函数和observer
+                navigationModule.utils.cleanupResize = cleanupResize;
+                navigationModule.utils.layoutObserver = observer;
             }
         },
         
@@ -1166,12 +1251,10 @@ export const navigationModule = {
             let lastTargetKey = null;
             
             const processDragOver = (e) => {
+                // 【优化】preventDefault已在返回函数中立即调用，这里不需要重复调用
                 if (!navigationModule.state.draggedItemId || !navigationModule.state.draggedItem) {
-                    e.preventDefault();
                     return;
                 }
-                
-                e.preventDefault();
                 
                 const draggedItem = navigationModule.state.draggedItem;
                 draggedItem.style.pointerEvents = 'none';
@@ -1223,6 +1306,11 @@ export const navigationModule = {
             };
             
             return (e) => {
+                // 【关键修复】必须在事件处理函数中立即调用preventDefault
+                // 不能等到requestAnimationFrame中才调用，否则drop事件不会触发
+                e.preventDefault();
+                e.stopPropagation();
+                
                 if (rafId) {
                     cancelAnimationFrame(rafId);
                 }
@@ -1234,6 +1322,7 @@ export const navigationModule = {
         })(),
         onDrop: (e) => {
             e.preventDefault();
+            e.stopPropagation(); // 【修复】阻止事件冒泡
             
             // 清理所有视觉指示器
             const allItems = dom.navigationGrid.querySelectorAll('.nav-item');
@@ -1291,21 +1380,49 @@ export const navigationModule = {
                     .filter(item => item !== undefined);
                 
                 if (reorderedItems.length === originalItems.length) {
-                    group.items = reorderedItems;
-                    updateNavigationGroupsMap();
-                    core.saveUserData(() => {
-                        // Infinity风格：平滑更新
-                        navigationModule.render.grid();
-                    });
+                    // 检查顺序是否真的改变了
+                    const orderChanged = reorderedItems.some((item, index) => item.id !== originalItems[index].id);
+                    
+                    if (orderChanged) {
+                        // 【关键修复】直接修改state.userData中的数组，确保引用关系正确
+                        const groupIndex = state.userData.navigationGroups.findIndex(g => g.id === group.id);
+                        if (groupIndex !== -1) {
+                            // 直接修改state.userData中的数组引用
+                            state.userData.navigationGroups[groupIndex].items = reorderedItems;
+                            // 同时更新group引用（保持一致性）
+                            group.items = reorderedItems;
+                        } else {
+                            // 降级：如果找不到索引，直接修改group
+                            group.items = reorderedItems;
+                        }
+                        
+                        updateNavigationGroupsMap();
+                        
+                        // 【修复】立即保存，不等待防抖，确保数据及时保存
+                        // 移除回调中的重新渲染，避免在保存完成前读取旧数据
+                        core.saveUserData((error) => {
+                            if (error) {
+                                logger.error('保存图标排序失败:', error);
+                                NotificationService.showToast('保存排序失败，请重试', 'error');
+                                // 保存失败时重新渲染以恢复正确状态
+                                navigationModule.render.grid();
+                            } else {
+                                logger.debug('图标排序保存成功');
+                            }
+                        }, { immediate: true }); // 【修复】使用立即保存选项，跳过防抖
+                    }
                 } else {
                     // 如果顺序有问题，重新渲染
+                    log.warn('Icon reorder failed: item count mismatch');
                     navigationModule.render.grid();
                 }
                 
+                // 【关键修复】在onDrop处理完成后才清理状态
+                // 确保状态在保存逻辑执行时仍然可用
                 navigationModule.state.draggedItemIds = [];
                 navigationModule.state.draggedItemId = null;
                 navigationModule.state.draggedItem = null;
-            }, 300);
+                }, 100); // 【修复】减少延迟从300ms到100ms，加快保存速度
         },
         onDragOverTab: (e) => {
             // 【修复】只处理导航项拖拽到标签的情况，忽略标签自身拖拽
@@ -1378,7 +1495,16 @@ export const navigationModule = {
             }
 
             updateNavigationGroupsMap(); // 更新缓存
-            core.saveUserData(() => {
+            
+            // 【修复】跨分类拖拽也需要立即保存，确保数据及时保存
+            core.saveUserData((error) => {
+                if (error) {
+                    logger.error('保存跨分类移动失败:', error);
+                    NotificationService.showToast('保存失败，请重试', 'error');
+                } else {
+                    logger.debug('跨分类移动保存成功');
+                }
+                
                 const count = movedItems.length;
                 navigationModule.render.grid();
                 
@@ -1386,7 +1512,7 @@ export const navigationModule = {
                 if (isBatchEditMode) {
                     navigationModule.utils.toggleBatchEditMode();
                 }
-            });
+            }, { immediate: true }); // 【修复】使用立即保存选项
             
             // 清理状态
             navigationModule.state.draggedItemIds = [];
@@ -1616,21 +1742,41 @@ export const navigationModule = {
                 // 更新缓存
                 updateNavigationGroupsMap();
                 
-                // 保存数据
-                core.saveUserData(() => {
+                // 【修复】立即保存标签排序，确保数据及时保存
+                core.saveUserData((error) => {
+                    if (error) {
+                        logger.error('保存标签排序失败:', error);
+                        NotificationService.showToast('保存排序失败，请重试', 'error');
+                    } else {
+                        logger.debug('标签排序保存成功');
+                    }
                     // 重新渲染标签以确保UI与数据一致
                     navigationModule.render.tabs();
-                });
+                }, { immediate: true }); // 【修复】使用立即保存选项
             }
         },
         
         /**
-         * 清理所有导航模块的事件监听器
+         * 清理所有导航模块的事件监听器和资源
          */
         cleanup: () => {
+            // 清理事件监听器
             navigationEventIds.forEach(id => eventManager.remove(id));
             navigationEventIds.length = 0;
-            logger.debug('Navigation module events cleaned up');
+            
+            // 清理窗口大小变化监听器
+            if (navigationModule.utils.cleanupResize) {
+                navigationModule.utils.cleanupResize();
+                navigationModule.utils.cleanupResize = null;
+            }
+            
+            // 清理MutationObserver
+            if (navigationModule.utils.layoutObserver) {
+                navigationModule.utils.layoutObserver.disconnect();
+                navigationModule.utils.layoutObserver = null;
+            }
+            
+            logger.debug('Navigation module events and resources cleaned up');
         }
     }
 };

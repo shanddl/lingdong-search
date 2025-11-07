@@ -1487,18 +1487,19 @@ class EffectsPanel {
      * 设置导航对齐
      */
     setNavAlignment(align) {
-        const navGrid = document.getElementById('navigation-grid');
-        if (!navGrid) return;
+        const navContainer = document.getElementById('navigation-container');
+        if (!navContainer) return;
         
+        // 修改对齐方式：在父容器上使用justify-content控制对齐（grid宽度为fit-content）
         const alignmentMap = {
-            left: { marginLeft: '0', marginRight: 'auto' },
-            right: { marginLeft: 'auto', marginRight: '0' },
-            center: { marginLeft: 'auto', marginRight: 'auto' },
+            left: 'flex-start',
+            center: 'center',
+            right: 'flex-end'
         };
         
-        const style = alignmentMap[align];
-        if (style) {
-            Object.assign(navGrid.style, style);
+        const justifyContent = alignmentMap[align];
+        if (justifyContent) {
+            navContainer.style.justifyContent = justifyContent;
             localStorage.setItem('nav-alignment', align);
         }
     }

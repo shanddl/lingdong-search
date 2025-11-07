@@ -1571,21 +1571,18 @@ const actionHandlers = {
         });
         // 为当前按钮添加active和selected状态
         target.classList.add('active', 'selected');
-        // 应用对齐方式到导航网格
-        if (dom.navigationGrid) {
-            switch(align) {
-                case 'left':
-                    dom.navigationGrid.style.marginLeft = '0';
-                    dom.navigationGrid.style.marginRight = 'auto';
-                    break;
-                case 'center':
-                    dom.navigationGrid.style.marginLeft = 'auto';
-                    dom.navigationGrid.style.marginRight = 'auto';
-                    break;
-                case 'right':
-                    dom.navigationGrid.style.marginLeft = 'auto';
-                    dom.navigationGrid.style.marginRight = '0';
-                    break;
+        // 应用对齐方式到导航容器（父容器）
+        // 修改对齐方式：在父容器上使用justify-content控制对齐（grid宽度为fit-content）
+        if (dom.navigationContainer) {
+            const alignmentMap = {
+                'left': 'flex-start',
+                'center': 'center',
+                'right': 'flex-end'
+            };
+            
+            const justifyContent = alignmentMap[align];
+            if (justifyContent) {
+                dom.navigationContainer.style.justifyContent = justifyContent;
             }
         }
         // 保存用户选择
