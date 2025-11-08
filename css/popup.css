@@ -439,6 +439,35 @@ body.light-mode .create-group-btn:hover {
     background: rgba(13, 101, 45, 0.15);
 }
 
+.disable-all-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--error-color, #f44336);
+    border-radius: 6px;
+    color: var(--error-color, #f44336);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+    font-weight: 500;
+    box-shadow: 0 1px 3px var(--shadow);
+}
+
+body.light-mode .disable-all-btn {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+.disable-all-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--error-color, #f44336);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px var(--shadow);
+}
+
+body.light-mode .disable-all-btn:hover {
+    background: rgba(244, 67, 54, 0.15);
+}
+
 .extension-list {
     max-height: none;
     overflow-y: visible;

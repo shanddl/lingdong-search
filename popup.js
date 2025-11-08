@@ -30,6 +30,7 @@ import { sanitizer } from './js/security.js';
         searchStoreBtn: document.getElementById('search-store-btn'),
         searchScriptBtn: document.getElementById('search-script-btn'),
         createGroupBtn: document.getElementById('create-group-btn'),
+        disableAllBtn: document.getElementById('disable-all-btn'),
         themeToggle: document.getElementById('theme-toggle')
     };
 
@@ -66,7 +67,6 @@ import { sanitizer } from './js/security.js';
                 dom.urlInput.value = tab.url || '';
             }
         } catch (error) {
-            
             showStatus('无法获取当前页面信息', true);
             utils.form.setButtonLoading(dom.saveButton, false, '', '保存');
         }
@@ -265,7 +265,7 @@ import { sanitizer } from './js/security.js';
     // 当DOM加载完毕后，初始化窗口
     document.addEventListener('DOMContentLoaded', initializePopup);
 
-    // 监听分类选择框的变化，以显示或隐藏“新分类名称”输入框
+    // 监听分类选择框的变化，以显示或隐藏"新分类名称"输入框
     dom.groupSelect.addEventListener('change', () => {
         const isNewGroup = dom.groupSelect.value === NEW_GROUP_VALUE;
         dom.newGroupContainer.classList.toggle('hidden', !isNewGroup);
@@ -301,9 +301,9 @@ import { sanitizer } from './js/security.js';
                 } else if (tabName === 'extensions') {
                     dom.addNavContent.classList.add('hidden');
                     dom.extensionsContent.classList.remove('hidden');
-                    // 扩展管理标签页：宽宽度（参考HTML文件，增加到700px避免滚动条）
-                    document.body.style.width = '700px';
-                    document.body.style.maxWidth = '700px';
+                    // 扩展管理标签页：宽宽度（加宽以容纳更多内容）
+                    document.body.style.width = '650px';
+                    document.body.style.maxWidth = '650px';
                     // 切换到扩展管理时加载扩展列表
                     loadExtensions();
                 }
@@ -932,6 +932,63 @@ import { sanitizer } from './js/security.js';
     }
 
     /**
+     * 禁用所有扩展
+     */
+    async function disableAllExtensions() {
+        try {
+            if (!chrome.management) {
+                showStatus('扩展管理权限不可用', true);
+                return;
+            }
+
+            showStatus('正在禁用所有扩展...', false);
+            
+            // 获取所有扩展
+            const allExtensions = await chrome.management.getAll();
+            const currentExtensionId = chrome.runtime.id; // 当前扩展本身（灵动搜索）
+            
+            // 禁用所有扩展（跳过当前扩展本身和未分组扩展）
+            const ungroupedExtIds = new Set(ungroupedExtensions);
+            let disabledCount = 0;
+            let errorCount = 0;
+
+            for (const ext of allExtensions) {
+                // 跳过当前扩展本身和未分组扩展
+                if (ext.id === currentExtensionId || ungroupedExtIds.has(ext.id)) {
+                    continue;
+                }
+
+                // 只禁用已启用的扩展
+                if (ext.enabled) {
+                    try {
+                        await chrome.management.setEnabled(ext.id, false);
+                        disabledCount++;
+                    } catch (error) {
+                        logger.warn(`无法禁用扩展 ${ext.id}:`, error);
+                        errorCount++;
+                    }
+                }
+            }
+
+            // 清除活动情景模式
+            activeScenarioId = null;
+            await saveGroupsData();
+
+            // 重新加载扩展列表
+            await loadExtensions(getCurrentSearch());
+            
+            if (errorCount > 0) {
+                showStatus(`已禁用 ${disabledCount} 个扩展，${errorCount} 个扩展禁用失败`, true);
+            } else {
+                showStatus(`已成功禁用 ${disabledCount} 个扩展`, false);
+            }
+        } catch (error) {
+            logger.error('禁用所有扩展失败:', error);
+            showStatus(`操作失败: ${error.message}`, true);
+        }
+    }
+
+    /**
      * 【情景模式】编辑情景模式
      */
     async function editGroup(groupId) {
@@ -1014,8 +1071,10 @@ import { sanitizer } from './js/security.js';
             // 【情景模式】获取未分组扩展列表（优先权最大）
             const ungroupedExtIds = new Set(ungroupedExtensions);
             
-            // 获取该情景模式中的所有扩展ID（跳过未分组扩展）
-            const groupExtIds = scenario.extensionIds.filter(extId => !ungroupedExtIds.has(extId));
+            // 【修复】获取该情景模式中的所有扩展ID
+            // 即使扩展在未分组中，如果它在当前情景模式中，也应该被启用/禁用
+            // 未分组扩展的"优先权"是指不会被自动禁用（当启用其他情景模式时），但仍应能被启用
+            const groupExtIds = scenario.extensionIds;
 
             for (const extId of groupExtIds) {
                 try {
@@ -1028,26 +1087,43 @@ import { sanitizer } from './js/security.js';
             // 【情景模式】如果启用情景模式，设置为活动情景模式
             if (enabled) {
                 activeScenarioId = groupId;
-                // 禁用其他扩展（跳过未分组、当前情景模式的扩展，以及当前扩展本身）
-                const allExtensions = await chrome.management.getAll();
-                const currentScenarioExtIds = new Set(scenario.extensionIds);
+                
+                // 【修复】收集所有情景模式中的扩展ID（用于判断哪些扩展应该被禁用）
+                // 只处理情景模式中的扩展，不影响不在任何情景模式中的扩展
+                const allScenarioExtensionIds = new Set();
+                scenarios.forEach(s => {
+                    if (s.extensionIds) {
+                        s.extensionIds.forEach(id => allScenarioExtensionIds.add(id));
+                    }
+                });
+                
                 // 【关键修复】获取当前扩展ID（灵动搜索本身），避免禁用自己
                 const currentExtensionId = chrome.runtime.id;
+                const currentScenarioExtIds = new Set(scenario.extensionIds);
                 
-                for (const ext of allExtensions) {
-                    // 跳过：未分组扩展、当前情景模式的扩展、当前扩展本身
-                    if (!ungroupedExtIds.has(ext.id) && 
-                        !currentScenarioExtIds.has(ext.id) && 
-                        ext.id !== currentExtensionId) {
+                // 禁用所有不在当前情景模式中的扩展（跳过未分组扩展和当前扩展本身）
+                // 【修复】只处理情景模式中的扩展，不在任何情景模式中的扩展保持原状
+                for (const extId of allScenarioExtensionIds) {
+                    // 跳过未分组扩展（优先权最大）
+                    if (ungroupedExtIds.has(extId)) {
+                        continue;
+                    }
+                    // 跳过当前扩展本身
+                    if (extId === currentExtensionId) {
+                        continue;
+                    }
+                    // 如果扩展不在当前情景模式中，则禁用
+                    if (!currentScenarioExtIds.has(extId)) {
                         try {
-                            await chrome.management.setEnabled(ext.id, false);
+                            await chrome.management.setEnabled(extId, false);
                         } catch (error) {
-                            logger.warn(`无法禁用扩展 ${ext.id}:`, error);
+                            logger.warn(`无法禁用扩展 ${extId}:`, error);
                         }
                     }
                 }
             } else {
-                // 如果禁用情景模式，清除活动情景模式
+                // 【修复】如果禁用情景模式，清除活动情景模式
+                // 禁用情景模式时，只禁用该模式下的扩展，不影响其他扩展的状态
                 if (activeScenarioId === groupId) {
                     activeScenarioId = null;
                 }
@@ -1085,12 +1161,20 @@ import { sanitizer } from './js/security.js';
         // 动态计算菜单高度（根据实际菜单项数量）
         const menuItemHeight = 28;
         const dividerHeight = 9; // 分隔线高度（1px + 上下各4px margin）
+        
+        // 【关键修复】必须先检查扩展所属的情景模式，才能计算菜单项数量
+        const currentScenarios = scenarios.filter(s => s.extensionIds && s.extensionIds.includes(ext.id));
+        const isUngrouped = ungroupedExtensions.includes(ext.id);
+        
         // 基础菜单项：启用/禁用、查看详情、分隔线、分配到情景模式（子菜单不计算高度）、选项、分隔线、查看商店来源、删除扩展 = 7项（2个分隔线）
         let menuItemCount = 7;
         // 【情景模式】如果已在情景模式中，添加"从所有情景模式移除"项
         if (currentScenarios.length > 0) {
             menuItemCount += 1;
         }
+        // 【情景模式】添加未分组相关菜单项（添加到未分组 或 从未分组移除）
+        menuItemCount += 1;
+        
         const menuHeight = menuItemCount * menuItemHeight + dividerHeight * 2 + 12;
         
         // 确保菜单不会超出窗口边界
@@ -1106,10 +1190,6 @@ import { sanitizer } from './js/security.js';
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         menu.style.zIndex = '10000';
-
-        // 【情景模式】检查扩展所属的情景模式（支持多个）
-        const currentScenarios = scenarios.filter(s => s.extensionIds && s.extensionIds.includes(ext.id));
-        const isUngrouped = ungroupedExtensions.includes(ext.id);
 
         // 构建菜单HTML
         let menuHTML = `
@@ -1249,93 +1329,101 @@ import { sanitizer } from './js/security.js';
         });
 
         // 点击"启用/禁用"
-        menu.querySelector('[data-action="toggle"]').addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await toggleExtension(ext.id, !ext.enabled);
-            menu.remove();
-        });
+        const toggleItem = menu.querySelector('[data-action="toggle"]');
+        if (toggleItem) {
+            toggleItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await toggleExtension(ext.id, !ext.enabled);
+                menu.remove();
+            });
+        }
 
         // 点击"查看详情"
-        menu.querySelector('[data-action="details"]').addEventListener('click', (e) => {
-            e.stopPropagation();
-            // 打开Chrome扩展管理页面
-            chrome.tabs.create({ url: `chrome://extensions/?id=${ext.id}` });
-            menu.remove();
-        });
+        const detailsItem = menu.querySelector('[data-action="details"]');
+        if (detailsItem) {
+            detailsItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // 打开Chrome扩展管理页面
+                chrome.tabs.create({ url: `chrome://extensions/?id=${ext.id}` });
+                menu.remove();
+            });
+        }
 
         // 处理子菜单项点击
-        submenu.querySelectorAll('.context-submenu-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const groupId = item.dataset.groupId;
+        if (submenu) {
+            submenu.querySelectorAll('.context-submenu-item').forEach(item => {
+                item.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const groupId = item.dataset.groupId;
                 
-                if (item.dataset.action === 'create-group') {
-                    await createGroup();
-                    // 重新显示菜单（延迟一点确保情景模式数据已保存）
-                    menu.remove();
-                    // 创建一个新的事件对象，使用菜单的原始位置
-                    const syntheticEvent = {
-                        pageX: event.pageX || event.clientX || 0,
-                        pageY: event.pageY || event.clientY || 0,
-                        clientX: event.clientX || 0,
-                        clientY: event.clientY || 0
-                    };
-                    // 等待storage写入完成，然后重新显示菜单
-                    // 注意：createGroup已经保存了数据，所以不需要再次调用loadGroupsData
-                    // showContextMenu内部会调用loadGroupsData()，确保菜单显示最新情景模式
-                    await new Promise(resolve => setTimeout(resolve, 150));
-                    try {
-                        const latestExt = await chrome.management.get(ext.id);
-                        await showContextMenu(syntheticEvent, latestExt);
-                    } catch (error) {
-                        logger.error('获取扩展信息失败:', error);
-                        await showContextMenu(syntheticEvent, ext);
-                    }
-                } else {
-                    // 【情景模式】groupId可能是空字符串（未分组）或有效的情景模式ID
-                    if (groupId === '' || groupId === undefined) {
-                        // 添加到未分组（优先权最大）
-                        if (!ungroupedExtensions.includes(ext.id)) {
-                            ungroupedExtensions.push(ext.id);
+                    if (item.dataset.action === 'create-group') {
+                        await createGroup();
+                        // 重新显示菜单（延迟一点确保情景模式数据已保存）
+                        menu.remove();
+                        // 创建一个新的事件对象，使用菜单的原始位置
+                        const syntheticEvent = {
+                            pageX: event.pageX || event.clientX || 0,
+                            pageY: event.pageY || event.clientY || 0,
+                            clientX: event.clientX || 0,
+                            clientY: event.clientY || 0
+                        };
+                        // 等待storage写入完成，然后重新显示菜单
+                        // 注意：createGroup已经保存了数据，所以不需要再次调用loadGroupsData
+                        // showContextMenu内部会调用loadGroupsData()，确保菜单显示最新情景模式
+                        await new Promise(resolve => setTimeout(resolve, 150));
+                        try {
+                            const latestExt = await chrome.management.get(ext.id);
+                            await showContextMenu(syntheticEvent, latestExt);
+                        } catch (error) {
+                            logger.error('获取扩展信息失败:', error);
+                            await showContextMenu(syntheticEvent, ext);
                         }
-                    } else if (groupId) {
-                        // 【情景模式】添加到情景模式（允许属于多个情景模式）
-                        const scenario = scenarios.find(s => s.id === groupId);
-                        if (scenario) {
-                            // 如果已经在情景模式中，则从该情景模式移除
-                            if (scenario.extensionIds && scenario.extensionIds.includes(ext.id)) {
-                                const index = scenario.extensionIds.indexOf(ext.id);
-                                scenario.extensionIds.splice(index, 1);
-                            } else {
-                                // 添加到情景模式
-                                if (!scenario.extensionIds) {
-                                    scenario.extensionIds = [];
-                                }
-                                scenario.extensionIds.push(ext.id);
-                            }
-                            // 【关键修复】确保扩展仍然在未分组中（如果之前就在）
-                            const wasUngrouped = ungroupedExtensions.includes(ext.id);
-                            if (wasUngrouped && !ungroupedExtensions.includes(ext.id)) {
-                                logger.warn(`[Popup] 警告：扩展 ${ext.id} 在添加到情景模式后从未分组中丢失，正在恢复`);
+                    } else {
+                        // 【情景模式】groupId可能是空字符串（未分组）或有效的情景模式ID
+                        if (groupId === '' || groupId === undefined) {
+                            // 添加到未分组（优先权最大）
+                            if (!ungroupedExtensions.includes(ext.id)) {
                                 ungroupedExtensions.push(ext.id);
                             }
+                        } else if (groupId) {
+                            // 【情景模式】添加到情景模式（允许属于多个情景模式）
+                            const scenario = scenarios.find(s => s.id === groupId);
+                            if (scenario) {
+                                // 如果已经在情景模式中，则从该情景模式移除
+                                if (scenario.extensionIds && scenario.extensionIds.includes(ext.id)) {
+                                    const index = scenario.extensionIds.indexOf(ext.id);
+                                    scenario.extensionIds.splice(index, 1);
+                                } else {
+                                    // 添加到情景模式
+                                    if (!scenario.extensionIds) {
+                                        scenario.extensionIds = [];
+                                    }
+                                    scenario.extensionIds.push(ext.id);
+                                }
+                                // 【关键修复】确保扩展仍然在未分组中（如果之前就在）
+                                const wasUngrouped = ungroupedExtensions.includes(ext.id);
+                                if (wasUngrouped && !ungroupedExtensions.includes(ext.id)) {
+                                    logger.warn(`[Popup] 警告：扩展 ${ext.id} 在添加到情景模式后从未分组中丢失，正在恢复`);
+                                    ungroupedExtensions.push(ext.id);
+                                }
+                            }
                         }
+                        await saveGroupsData();
+                        
+                        // 注意：不要在这里调用loadGroupsData()，因为：
+                        // 1. 内存中的extensionGroups已经更新了
+                        // 2. loadGroupsData()可能会从storage读取旧数据（如果storage写入有延迟）
+                        // 3. 这会覆盖刚刚更新的映射
+                        // 直接调用loadExtensions，它内部会调用loadGroupsData()，但此时storage应该已经更新了
+                        
+                        // 等待storage写入完成，然后重新渲染
+                        await new Promise(resolve => setTimeout(resolve, 100)); // 等待storage写入完成
+                        await loadExtensions(getCurrentSearch());
+                        menu.remove();
                     }
-                    await saveGroupsData();
-                    
-                    // 注意：不要在这里调用loadGroupsData()，因为：
-                    // 1. 内存中的extensionGroups已经更新了
-                    // 2. loadGroupsData()可能会从storage读取旧数据（如果storage写入有延迟）
-                    // 3. 这会覆盖刚刚更新的映射
-                    // 直接调用loadExtensions，它内部会调用loadGroupsData()，但此时storage应该已经更新了
-                    
-                    // 等待storage写入完成，然后重新渲染
-                    await new Promise(resolve => setTimeout(resolve, 100)); // 等待storage写入完成
-                    await loadExtensions(getCurrentSearch());
-                    menu.remove();
-                }
+                });
             });
-        });
+        }
 
         // 【情景模式】点击"从所有情景模式移除"（如果存在）
         const removeFromAllScenariosItem = menu.querySelector('[data-action="remove-from-all-scenarios"]');
@@ -1395,15 +1483,18 @@ import { sanitizer } from './js/security.js';
         }
 
         // 点击"选项"
-        menu.querySelector('[data-action="options"]').addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (ext.optionsUrl) {
-                chrome.tabs.create({ url: ext.optionsUrl });
-            } else {
-                showStatus('该扩展没有选项页面', true);
-            }
-            menu.remove();
-        });
+        const optionsItem = menu.querySelector('[data-action="options"]');
+        if (optionsItem) {
+            optionsItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (ext.optionsUrl) {
+                    chrome.tabs.create({ url: ext.optionsUrl });
+                } else {
+                    showStatus('该扩展没有选项页面', true);
+                }
+                menu.remove();
+            });
+        }
 
         // 点击"查看商店来源"
         const storeItem = menu.querySelector('[data-action="store"]');
@@ -1533,6 +1624,16 @@ import { sanitizer } from './js/security.js';
         if (dom.createGroupBtn) {
             dom.createGroupBtn.addEventListener('click', async () => {
                 await createGroup();
+            });
+        }
+
+        // 禁用全部扩展按钮
+        if (dom.disableAllBtn) {
+            dom.disableAllBtn.addEventListener('click', async () => {
+                if (!confirm('确定要禁用所有扩展吗？')) {
+                    return;
+                }
+                await disableAllExtensions();
             });
         }
     }

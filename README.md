@@ -89,16 +89,40 @@ CRX: https://github.com/shanddl/lingdong-search/releases/latest/download/lingdon
 
 ### 自动构建和部署
 
-项目已配置 GitHub Actions，支持自动打包 CRX 文件：
+**⚠️ 重要说明**：本项目支持两种部署方式，**每次部署时会询问用户是否从本地上传文件**。
 
-- **触发方式**：
-  - 推送代码到 `main` 或 `master` 分支（仅构建）
-  - 创建版本 Tag（自动创建 Release 并提供下载链接）
-  - 手动触发工作流
+| 部署方式 | 说明 | 特点 |
+|---------|------|------|
+| **方式一：从本地上传** | 触发 GitHub Actions 自动构建并发布 | ✅ 自动提交代码和创建标签<br>✅ 触发 GitHub Actions 自动构建 |
+| **方式二：自动构建** | GitHub Actions 自动构建和上传（推荐，默认） | ✅ 完全自动化<br>✅ 构建环境一致 |
 
-- **构建产物**：
-  - CRX 文件自动上传到 GitHub Releases
-  - 提供直接下载链接
+**部署流程**：
+
+**方式一：从本地上传（触发 GitHub Actions）**
+1. 运行 `npm run deploy`
+2. **脚本会询问：是否从本地上传文件到 GitHub Releases？**
+3. 选择 `y`：触发 GitHub Actions 自动构建并发布
+   - 自动提交未提交的更改（需要确认）
+   - 自动创建并推送版本标签
+   - GitHub Actions 自动构建并上传到 Releases
+4. 选择 `n`：手动推送代码和标签，使用 GitHub Actions 自动构建（推荐）
+
+**方式二：自动构建（GitHub Actions）**
+1. 推送代码到 `main` 或 `master` 分支（仅构建）
+2. 创建版本 Tag（自动创建 Release 并提供下载链接）
+3. GitHub Actions 自动构建 ZIP 和 CRX 文件
+4. 构建产物自动上传到 GitHub Releases
+
+**本地上传时的文件排除规则**：
+- ❌ 不包含 `docs/` 目录（所有文档）
+- ❌ 不包含 `*.md` 文件（Markdown 文档）
+- ❌ 不包含 `scripts/` 目录（构建脚本）
+- ✅ 只上传项目核心文件（manifest.json、HTML、CSS、JS 等）
+
+**构建产物**：
+- CRX 文件上传到 GitHub Releases
+- ZIP 文件上传到 GitHub Releases
+- 提供直接下载链接
 
 详细部署说明请查看 [README-DEPLOY.md](README-DEPLOY.md)
 
