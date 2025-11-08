@@ -789,9 +789,24 @@ export const navigationModule = {
                             }
                         });
                         
-                        // 【关键修复】不要在这里重置draggedItemId和draggedItem
-                        // 因为onDrop可能在dragend之后才触发，需要这些状态来保存数据
-                        // 状态清理应该在onDrop完成后进行
+                        // 【改进】添加兜底清理机制：如果onDrop在500ms内没有触发，则清理状态
+                        // 这可以防止拖拽被取消（如拖到页面外）时状态残留
+                        const draggedId = navigationModule.state.draggedItemId;
+                        const draggedItem = navigationModule.state.draggedItem;
+                        
+                        if (draggedId || draggedItem) {
+                            timerManager.clearTimeout('navigation-dragend-cleanup');
+                            timerManager.setTimeout('navigation-dragend-cleanup', () => {
+                                // 检查状态是否仍然存在（如果onDrop已经处理，状态应该已被清理）
+                                if (navigationModule.state.draggedItemId === draggedId || 
+                                    navigationModule.state.draggedItem === draggedItem) {
+                                    logger.debug('拖拽状态超时清理：onDrop未在预期时间内触发');
+                                    navigationModule.state.draggedItemIds = [];
+                                    navigationModule.state.draggedItemId = null;
+                                    navigationModule.state.draggedItem = null;
+                                }
+                            }, 500); // 500ms后清理，给onDrop足够的时间
+                        }
                     })
                 );
             }
@@ -1160,6 +1175,14 @@ export const navigationModule = {
         onDragStart: (e) => {
             const item = e.target.closest('.nav-item');
             if (item) {
+                // 【改进】清理之前可能残留的拖拽状态（防止状态污染）
+                if (navigationModule.state.draggedItemId || navigationModule.state.draggedItem) {
+                    logger.debug('清理残留的拖拽状态');
+                    navigationModule.state.draggedItemIds = [];
+                    navigationModule.state.draggedItemId = null;
+                    navigationModule.state.draggedItem = null;
+                }
+                
                 const { isBatchEditMode, selectedItems } = navigationModule.state;
                 const itemId = item.dataset.itemId;
                 
@@ -1306,6 +1329,13 @@ export const navigationModule = {
             };
             
             return (e) => {
+                // 【修复】只处理导航项拖拽，不处理书签拖拽
+                // 检查是否是导航项拖拽（通过检查draggedItemId或draggedItem）
+                if (!navigationModule.state.draggedItemId && !navigationModule.state.draggedItem) {
+                    // 不是导航项拖拽，可能是书签拖拽，不阻止事件传播
+                    return;
+                }
+                
                 // 【关键修复】必须在事件处理函数中立即调用preventDefault
                 // 不能等到requestAnimationFrame中才调用，否则drop事件不会触发
                 e.preventDefault();
@@ -1321,6 +1351,15 @@ export const navigationModule = {
             };
         })(),
         onDrop: (e) => {
+            // 【修复】只处理导航项拖拽，不处理书签拖拽
+            const draggedId = navigationModule.state.draggedItemId;
+            const draggedItem = navigationModule.state.draggedItem;
+            
+            // 如果不是导航项拖拽，不阻止事件，让书签拖拽事件继续传播
+            if (!draggedId && !draggedItem) {
+                return;
+            }
+            
             e.preventDefault();
             e.stopPropagation(); // 【修复】阻止事件冒泡
             
@@ -1329,9 +1368,6 @@ export const navigationModule = {
             allItems.forEach(item => {
                 item.classList.remove('drag-over-top', 'drag-over-bottom');
             });
-            
-            const draggedId = navigationModule.state.draggedItemId;
-            const draggedItem = navigationModule.state.draggedItem;
             
             if (!draggedId || !draggedItem) {
                 // 清理状态
@@ -1422,6 +1458,9 @@ export const navigationModule = {
                 navigationModule.state.draggedItemIds = [];
                 navigationModule.state.draggedItemId = null;
                 navigationModule.state.draggedItem = null;
+                
+                // 【改进】取消dragend中设置的超时清理（如果onDrop成功处理）
+                timerManager.clearTimeout('navigation-dragend-cleanup');
                 }, 100); // 【修复】减少延迟从300ms到100ms，加快保存速度
         },
         onDragOverTab: (e) => {

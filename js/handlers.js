@@ -656,36 +656,53 @@ export const handlers = {
     globalDragOverHandler: (e) => {
         // 检查是否是书签拖拽
         const dataTransfer = e.dataTransfer;
-        if (dataTransfer && dataTransfer.types) {
-            const types = Array.from(dataTransfer.types);
+        if (!dataTransfer || !dataTransfer.types) {
+            return;
+        }
+        
+        const types = Array.from(dataTransfer.types);
+        
+        // 检查是否是书签类型（text/uri-list 或 text/html）
+        // 注意：从浏览器书签栏拖拽时，可能包含多种类型
+        const isBookmark = types.some(type => 
+            type === 'text/uri-list' || 
+            type === 'text/html' || 
+            type === 'text/x-moz-url' ||
+            type === 'text/plain' ||
+            type === 'text/url' ||
+            type === 'Url' ||
+            type === 'text/x-moz-url-priv'
+        );
+        
+        // 如果不是书签拖拽，直接返回
+        if (!isBookmark) {
+            return;
+        }
+        
+        // 【修复】检查是否是导航项拖拽（导航项拖拽不应该被书签拖拽处理器处理）
+        // 如果导航模块有拖拽状态，说明是导航项拖拽，不处理
+        if (navigationModule.state.draggedItemId || navigationModule.state.draggedItem) {
+            return;
+        }
+        
+        // 检查是否在导航网格上
+        if (dom.navigationGrid) {
+            const rect = dom.navigationGrid.getBoundingClientRect();
+            const isOverNavGrid = e.clientX >= rect.left && 
+                                  e.clientX <= rect.right && 
+                                  e.clientY >= rect.top && 
+                                  e.clientY <= rect.bottom;
             
-            // 检查是否是书签类型（text/uri-list 或 text/html）
-            const isBookmark = types.some(type => 
-                type === 'text/uri-list' || 
-                type === 'text/html' || 
-                type === 'text/x-moz-url' ||
-                type === 'text/plain'
-            );
-            
-            if (isBookmark && dom.navigationGrid) {
-                // 使用坐标检查是否在导航网格上
-                const rect = dom.navigationGrid.getBoundingClientRect();
-                const isOverNavGrid = e.clientX >= rect.left && 
-                                      e.clientX <= rect.right && 
-                                      e.clientY >= rect.top && 
-                                      e.clientY <= rect.bottom;
+            if (isOverNavGrid) {
+                // 允许放置书签
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
                 
-                if (isOverNavGrid) {
-                    // 允许放置书签
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    
-                    // 在导航网格上添加视觉反馈
-                    dom.navigationGrid.classList.add('drag-over-bookmark');
-                } else {
-                    // 如果不在导航网格上，清理样式
-                    dom.navigationGrid.classList.remove('drag-over-bookmark');
-                }
+                // 在导航网格上添加视觉反馈
+                dom.navigationGrid.classList.add('drag-over-bookmark');
+            } else {
+                // 如果不在导航网格上，清理样式
+                dom.navigationGrid.classList.remove('drag-over-bookmark');
             }
         }
     },
@@ -705,6 +722,11 @@ export const handlers = {
             dom.navigationGrid.classList.remove('drag-over-bookmark');
         }
         
+        // 【修复】检查是否是导航项拖拽（导航项拖拽不应该被书签拖拽处理器处理）
+        if (navigationModule.state.draggedItemId || navigationModule.state.draggedItem) {
+            return;
+        }
+        
         // 检查是否是书签拖拽
         const dataTransfer = e.dataTransfer;
         if (!dataTransfer || !dataTransfer.types) return;
@@ -714,7 +736,10 @@ export const handlers = {
             type === 'text/uri-list' || 
             type === 'text/html' || 
             type === 'text/x-moz-url' ||
-            type === 'text/plain'
+            type === 'text/plain' ||
+            type === 'text/url' ||
+            type === 'Url' ||
+            type === 'text/x-moz-url-priv'
         );
         
         if (!isBookmark) return;

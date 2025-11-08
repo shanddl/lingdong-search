@@ -319,9 +319,10 @@ export const extensionManager = {
                 // 获取未分组扩展列表（优先权最大，不受情景模式控制）
                 const ungroupedExtensionIds = new Set(this.getUngroupedExtensions());
                 
-                // 1. 启用当前情景模式下的所有扩展（跳过未分组扩展）
+                // 1. 启用当前情景模式下的所有扩展
+                // 【修复】即使扩展在未分组中，如果它在当前情景模式中，也应该被启用
+                // 未分组扩展的"优先权"是指不会被自动禁用，但仍应能被启用
                 const enablePromises = group.extensionIds
-                    .filter(extId => !ungroupedExtensionIds.has(extId)) // 【优先权】跳过未分组扩展
                     .map(extId => 
                         this.setEnabled(extId, true).catch(err => {
                             logger.warn(`[ExtensionManager] 无法启用扩展 ${extId}:`, err);
@@ -329,7 +330,8 @@ export const extensionManager = {
                     );
                 
                 // 2. 禁用所有不在当前情景模式中的扩展（跳过未分组扩展）
-                // 【关键修复】即使扩展在其他情景模式中，只要不在当前模式中，就应该禁用
+                // 【关键修复】只处理情景模式中的扩展，不影响不在任何情景模式中的扩展
+                // 即使扩展在其他情景模式中，只要不在当前模式中，就应该禁用
                 const disablePromises = [];
                 allScenarioExtensionIds.forEach(extId => {
                     // 跳过未分组扩展（优先权最大）
@@ -337,6 +339,7 @@ export const extensionManager = {
                         return;
                     }
                     // 如果扩展不在当前情景模式中，则禁用
+                    // 【修复】只处理在情景模式中的扩展，不在任何情景模式中的扩展保持原状
                     if (!group.extensionIds.includes(extId)) {
                         disablePromises.push(
                             this.setEnabled(extId, false).catch(err => {
@@ -353,7 +356,8 @@ export const extensionManager = {
                     this.setActiveScenarioId(null);
                 }
                 
-                // 禁用该模式下的所有扩展（跳过未分组扩展）
+                // 【修复】禁用该模式下的所有扩展（跳过未分组扩展）
+                // 禁用情景模式时，只禁用该模式下的扩展，不影响其他扩展的状态
                 const promises = group.extensionIds
                     .filter(extId => !this.isUngrouped(extId)) // 【优先权】跳过未分组扩展
                     .map(extId => 
