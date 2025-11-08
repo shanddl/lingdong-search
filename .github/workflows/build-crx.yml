@@ -1,0 +1,257 @@
+name: Build and Release Chrome Extension
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    # 【重要】必须设置权限才能创建 Release
+    permissions:
+      contents: write  # 创建 Release 和上传文件需要 write 权限
+      actions: read    # 读取 Actions 状态
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup private key from secrets
+        run: |
+          if [ -n "${{ secrets.CRX_PRIVATE_KEY }}" ]; then
+            echo "🔑 从 GitHub Secrets 恢复私钥..."
+            echo "${{ secrets.CRX_PRIVATE_KEY }}" > private-key.pem
+            chmod 600 private-key.pem
+            echo "✅ 私钥已恢复"
+          else
+            echo "⚠️ 未找到 CRX_PRIVATE_KEY Secret，将在构建时自动生成私钥"
+            echo "💡 建议：将私钥添加到 GitHub Secrets 以确保所有版本使用相同的签名"
+          fi
+
+      - name: Read version from manifest
+        id: manifest
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          # 统一使用固定的文件名前缀，确保规范且链接不会失效
+          NAME="lingdong-search"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "📦 Extension: $NAME"
+          echo "📝 Version: $VERSION"
+
+      - name: Build extension package
+        id: build
+        run: |
+          echo "🚀 Starting build process..."
+          set -e
+          
+          # 运行构建脚本（会生成ZIP和CRX）
+          node scripts/build-crx-github.js
+          
+          echo "📋 Checking for build artifacts..."
+          
+          # 查找统一命名的文件（文件名前缀固定为 lingdong-search）
+          BASE_NAME="lingdong-search-v${{ steps.manifest.outputs.version }}"
+          ZIP_FILE="${BASE_NAME}.zip"
+          CRX_FILE="${BASE_NAME}.crx"
+          
+          # 固定文件名的文件（用于最新版本直链）
+          FIXED_ZIP_FILE="lingdong-search.zip"
+          FIXED_CRX_FILE="lingdong-search.crx"
+          
+          FILES_FOUND=""
+          
+          if [ -f "$ZIP_FILE" ]; then
+            echo "✅ Found ZIP file: $ZIP_FILE"
+            echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $ZIP_FILE"
+          else
+            echo "❌ ZIP file not found: $ZIP_FILE"
+            exit 1
+          fi
+          
+          if [ -f "$CRX_FILE" ]; then
+            echo "✅ Found CRX file: $CRX_FILE"
+            echo "crx_file=$CRX_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $CRX_FILE"
+          else
+            echo "⚠️ CRX file not found: $CRX_FILE (only ZIP will be available)"
+          fi
+          
+          # 检查固定文件名的文件（用于最新版本直链）
+          if [ -f "$FIXED_ZIP_FILE" ]; then
+            echo "✅ Found fixed ZIP file: $FIXED_ZIP_FILE"
+            echo "fixed_zip_file=$FIXED_ZIP_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $FIXED_ZIP_FILE"
+          fi
+          
+          if [ -f "$FIXED_CRX_FILE" ]; then
+            echo "✅ Found fixed CRX file: $FIXED_CRX_FILE"
+            echo "fixed_crx_file=$FIXED_CRX_FILE" >> $GITHUB_OUTPUT
+            FILES_FOUND="$FILES_FOUND $FIXED_CRX_FILE"
+          fi
+          
+          # 输出所有文件列表（用换行分隔）
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES_FOUND" | tr ' ' '\n' | grep -v '^$' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "📦 Build artifacts:${FILES_FOUND}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-${{ steps.manifest.outputs.name }}-v${{ steps.manifest.outputs.version }}
+          path: |
+            ${{ steps.build.outputs.zip_file }}
+            ${{ steps.build.outputs.crx_file }}
+            *.zip
+            *.crx
+          retention-days: 90
+
+      - name: Prepare Release files
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: release_files
+        run: |
+          BASE_NAME="lingdong-search-v${{ steps.manifest.outputs.version }}"
+          ZIP_FILE="${BASE_NAME}.zip"
+          CRX_FILE="${BASE_NAME}.crx"
+          
+          # 固定文件名的文件（用于最新版本直链）
+          FIXED_ZIP_FILE="lingdong-search.zip"
+          FIXED_CRX_FILE="lingdong-search.crx"
+          
+          echo "🔍 Checking files for release..."
+          echo "ZIP_FILE: $ZIP_FILE"
+          echo "CRX_FILE: $CRX_FILE"
+          echo "FIXED_ZIP_FILE: $FIXED_ZIP_FILE"
+          echo "FIXED_CRX_FILE: $FIXED_CRX_FILE"
+          
+          RELEASE_FILES=""
+          
+          # 带版本号的文件
+          if [ -f "$ZIP_FILE" ]; then
+            echo "✅ ZIP file exists: $ZIP_FILE"
+            RELEASE_FILES="$RELEASE_FILES$ZIP_FILE\n"
+          else
+            echo "❌ ZIP file not found: $ZIP_FILE"
+          fi
+          
+          if [ -f "$CRX_FILE" ]; then
+            echo "✅ CRX file exists: $CRX_FILE"
+            RELEASE_FILES="$RELEASE_FILES$CRX_FILE\n"
+          else
+            echo "⚠️ CRX file not found: $CRX_FILE"
+          fi
+          
+          # 固定文件名的文件（用于最新版本直链）
+          if [ -f "$FIXED_ZIP_FILE" ]; then
+            echo "✅ Fixed ZIP file exists: $FIXED_ZIP_FILE"
+            RELEASE_FILES="$RELEASE_FILES$FIXED_ZIP_FILE\n"
+          else
+            echo "⚠️ Fixed ZIP file not found: $FIXED_ZIP_FILE"
+          fi
+          
+          if [ -f "$FIXED_CRX_FILE" ]; then
+            echo "✅ Fixed CRX file exists: $FIXED_CRX_FILE"
+            RELEASE_FILES="$RELEASE_FILES$FIXED_CRX_FILE\n"
+          else
+            echo "⚠️ Fixed CRX file not found: $FIXED_CRX_FILE"
+          fi
+          
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$RELEASE_FILES" | grep -v '^$' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "📦 Release files prepared:"
+          echo -e "$RELEASE_FILES"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.release_files.outputs.files }}
+          fail_on_unmatched_files: false
+          body: |
+            ## 🚀 Release v${{ steps.manifest.outputs.version }}
+            
+            ### 📦 下载
+            - [📦 下载 ZIP 文件](https://github.com/${{ github.repository }}/releases/download/v${{ steps.manifest.outputs.version }}/lingdong-search-v${{ steps.manifest.outputs.version }}.zip)
+            - [📦 下载 CRX 文件](https://github.com/${{ github.repository }}/releases/download/v${{ steps.manifest.outputs.version }}/lingdong-search-v${{ steps.manifest.outputs.version }}.crx)
+            
+            **文件名格式：**
+            - 带版本号：`lingdong-search-v${{ steps.manifest.outputs.version }}.zip/crx`
+            - 固定文件名（最新版本直链）：`lingdong-search.zip/crx`
+            
+            **最新版本直链（自动指向最新版本）：**
+            - ZIP: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.zip`
+            - CRX: `https://github.com/shanddl/lingdong-search/releases/latest/download/lingdong-search.crx`
+            
+            ### ✨ 新增功能
+            - 扩展分组改为情景模式
+            
+            ### 🐛 问题修复
+            - 修复问题
+            
+            ### ⚡ 性能优化
+            - 无
+            
+            ### 📝 更新内容
+            - 查看 [Commit History](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) 了解详细变更
+            
+            ### 🔧 安装方式
+            
+            **方式一：使用 ZIP 文件（推荐）**
+            1. 下载 ZIP 文件并解压
+            2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+            3. 启用"开发者模式"（右上角）
+            4. 点击"加载已解压的扩展程序"
+            5. 选择解压后的文件夹
+            
+            **方式二：使用 CRX 文件**
+            1. 下载 CRX 文件
+            2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+            3. 启用"开发者模式"（右上角）
+            4. 将下载的 CRX 文件拖拽到页面中完成安装
+            
+            ---
+            
+            **自动化构建**: 此版本由 GitHub Actions 自动构建生成
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## 📦 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Extension**: ${{ steps.manifest.outputs.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.manifest.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **ZIP File**: ${{ steps.build.outputs.zip_file }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.build.outputs.crx_file }}" ]; then
+            echo "- **CRX File**: ${{ steps.build.outputs.crx_file }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **CRX File**: Not generated" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
