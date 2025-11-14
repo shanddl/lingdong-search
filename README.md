@@ -120,52 +120,6 @@ CRX: https://github.com/shanddl/lingdong-search/releases/latest/download/lingdon
 
 ---
 
-## 🔧 配置说明
-
-### 环境配置 (config.js)
-
-```javascript
-export const config = {
-    env: 'development',  // 'development' 或 'production'
-    
-    debug: {
-        enableConsole: true,     // 是否启用控制台日志
-        logLevel: 'debug',       // 日志级别: debug/info/warn/error
-        enablePerformance: true, // 是否启用性能监控
-        verboseErrors: true      // 是否显示详细错误堆栈
-    },
-    
-    features: {
-        bookmarkSearch: true,    // 书签搜索功能
-        aiSearch: true           // AI搜索功能
-    },
-    
-    performance: {
-        debounceDelay: 300,      // 防抖延迟（毫秒）
-        throttleDelay: 100,      // 节流延迟（毫秒）
-        minSearchChars: 1,       // 触发搜索的最小字符数
-        maxHistoryItems: 100     // 最大历史记录数
-    }
-};
-```
-
-### 时间常量 (constants.js)
-
-所有时间相关的魔法数字已提取到 `STATIC_CONFIG.TIMING` 对象：
-
-```javascript
-TIMING: {
-    DOUBLE_CLICK_THRESHOLD: 300,     // 双击检测时间窗口
-    SEARCH_DEBOUNCE_DELAY: 150,      // 搜索建议防抖延迟
-    SEARCH_BLUR_DELAY: 300,          // 搜索框失焦延迟
-    PREVENT_HIDE_RESET_DELAY: 1000,  // 阻止隐藏标志重置时间
-    TOAST_DURATION: 2000,            // Toast提示显示时间
-    // ...更多
-}
-```
-
----
-
 ## 🔒 安全特性
 
 ### XSS防护
